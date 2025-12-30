@@ -44,7 +44,7 @@ export function useQuery<T>(
   };
 }
 
-export interface UseMutationResult<TData, TVariables> {
+export interface UseMutationResult<TVariables> {
   mutate: (variables: TVariables) => Promise<void>;
   isLoading: boolean;
   error: Error | null;
@@ -56,7 +56,7 @@ export function useMutation<TData, TVariables>(
     onSuccess?: (data: TData) => void;
     onError?: (error: Error) => void;
   }
-): UseMutationResult<TData, TVariables> {
+): UseMutationResult<TVariables> {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 

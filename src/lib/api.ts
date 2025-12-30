@@ -82,9 +82,9 @@ const mockResponse = async <T,>(data: T): Promise<T> => {
   return data;
 };
 
-const getPartById = (partId: number): Part | null => {
+const getPartById = (partId: number): Part | undefined => {
   const part = partCatalog.find((item) => item.id === partId);
-  return part ? { ...part } : null;
+  return part ? { ...part } : undefined;
 };
 
 const cartKey = (sessionId: string) => `cap-cart:${sessionId}`;
