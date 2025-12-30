@@ -2,11 +2,26 @@ import { useState } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { vehicleApi, categoryApi, type VehicleMake, type VehicleModel, type VehicleEngine, type Category } from "@/lib/api";
+import {
+  vehicleApi,
+  categoryApi,
+  type VehicleMake,
+  type VehicleModel,
+  type VehicleEngine,
+  type Category,
+} from "@/lib/api";
 import { useQuery } from "@/lib/hooks";
 
+export interface PartSelection {
+  year: number;
+  make: VehicleMake;
+  model: VehicleModel;
+  engine: VehicleEngine;
+  category: Category;
+}
+
 interface TreeSidebarProps {
-  onPartTypeSelect: (categoryId: number, engineId: number) => void;
+  onPartTypeSelect: (selection: PartSelection) => void;
 }
 
 export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
@@ -79,9 +94,15 @@ export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
     setExpandedCategories(newExpanded);
   };
 
-  const handlePartTypeClick = (categoryId: number, engineId: number) => {
-    setSelectedPath(prev => ({ ...prev, categoryId, engineId }));
-    onPartTypeSelect(categoryId, engineId);
+  const handlePartTypeClick = (selection: PartSelection) => {
+    setSelectedPath({
+      year: selection.year,
+      makeId: selection.make.id,
+      modelId: selection.model.id,
+      engineId: selection.engine.id,
+      categoryId: selection.category.id,
+    });
+    onPartTypeSelect(selection);
   };
 
   const categoryTree = categoriesData
@@ -92,8 +113,8 @@ export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
     : [];
 
   return (
-    <div className="w-60 bg-card border-r flex flex-col h-full">
-      <div className="p-3 bg-muted font-semibold text-sm border-b">
+    <div className="w-full bg-white border border-border flex flex-col h-full">
+      <div className="px-3 py-2 text-xs uppercase tracking-[0.3em] font-display border-b border-border text-foreground">
         Part Catalog
       </div>
       
@@ -138,7 +159,7 @@ interface YearNodeProps {
   onToggleModel: (makeId: number, modelId: number) => void;
   onToggleEngine: (engineId: number) => void;
   onToggleCategory: (categoryId: number) => void;
-  onPartTypeClick: (categoryId: number, engineId: number) => void;
+  onPartTypeClick: (selection: PartSelection) => void;
 }
 
 function YearNode({
@@ -215,7 +236,7 @@ interface MakeNodeProps {
   onToggleModel: (makeId: number, modelId: number) => void;
   onToggleEngine: (engineId: number) => void;
   onToggleCategory: (categoryId: number) => void;
-  onPartTypeClick: (categoryId: number, engineId: number) => void;
+  onPartTypeClick: (selection: PartSelection) => void;
 }
 
 function MakeNode({
@@ -249,7 +270,11 @@ function MakeNode({
         ) : (
           <ChevronRight className="h-3 w-3 flex-shrink-0" />
         )}
-        <span className="text-xs">🇺🇸</span>
+        {make.country && (
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase">
+            {make.country}
+          </span>
+        )}
         <span>{make.name}</span>
       </button>
 
@@ -258,6 +283,8 @@ function MakeNode({
           {modelsData.map((model) => (
             <ModelNode
               key={model.id}
+              year={year}
+              make={make}
               makeId={make.id}
               model={model}
               isExpanded={expandedModels.has(`${make.id}-${model.id}`)}
@@ -278,6 +305,8 @@ function MakeNode({
 }
 
 interface ModelNodeProps {
+  year: number;
+  make: VehicleMake;
   makeId: number;
   model: VehicleModel;
   isExpanded: boolean;
@@ -288,10 +317,12 @@ interface ModelNodeProps {
   selectedPath: any;
   onToggleEngine: (engineId: number) => void;
   onToggleCategory: (categoryId: number) => void;
-  onPartTypeClick: (categoryId: number, engineId: number) => void;
+  onPartTypeClick: (selection: PartSelection) => void;
 }
 
 function ModelNode({
+  year,
+  make,
   model,
   isExpanded,
   onToggle,
@@ -328,6 +359,9 @@ function ModelNode({
             <EngineNode
               key={engine.id}
               engine={engine}
+              year={year}
+              make={make}
+              model={model}
               isExpanded={expandedEngines.has(engine.id)}
               onToggle={() => onToggleEngine(engine.id)}
               expandedCategories={expandedCategories}
@@ -345,17 +379,23 @@ function ModelNode({
 
 interface EngineNodeProps {
   engine: VehicleEngine;
+  year: number;
+  make: VehicleMake;
+  model: VehicleModel;
   isExpanded: boolean;
   onToggle: () => void;
   expandedCategories: Set<number>;
   categoryTree: any[];
   selectedPath: any;
   onToggleCategory: (categoryId: number) => void;
-  onPartTypeClick: (categoryId: number, engineId: number) => void;
+  onPartTypeClick: (selection: PartSelection) => void;
 }
 
 function EngineNode({
   engine,
+  year,
+  make,
+  model,
   isExpanded,
   onToggle,
   expandedCategories,
@@ -385,6 +425,10 @@ function EngineNode({
               key={category.id}
               category={category}
               engineId={engine.id}
+              engine={engine}
+              year={year}
+              make={make}
+              model={model}
               isExpanded={expandedCategories.has(category.id)}
               onToggle={() => onToggleCategory(category.id)}
               selectedPath={selectedPath}
@@ -399,16 +443,24 @@ function EngineNode({
 
 interface CategoryNodeProps {
   category: Category & { children?: Category[] };
+  year: number;
+  make: VehicleMake;
+  model: VehicleModel;
   engineId: number;
+  engine: VehicleEngine;
   isExpanded: boolean;
   onToggle: () => void;
   selectedPath: any;
-  onPartTypeClick: (categoryId: number, engineId: number) => void;
+  onPartTypeClick: (selection: PartSelection) => void;
 }
 
 function CategoryNode({
   category,
+  year,
+  make,
+  model,
   engineId,
+  engine,
   isExpanded,
   onToggle,
   selectedPath,
@@ -423,12 +475,18 @@ function CategoryNode({
           if (hasChildren) {
             onToggle();
           } else {
-            onPartTypeClick(category.id, engineId);
+            onPartTypeClick({
+              year,
+              make,
+              model,
+              engine,
+              category,
+            });
           }
         }}
         className={cn(
           "w-full text-left px-2 py-1 hover:bg-muted rounded flex items-center gap-1",
-          selectedPath.categoryId === category.id && selectedPath.engineId === engineId && "bg-primary/10 font-semibold"
+          selectedPath.categoryId === category.id && selectedPath.engineId === engineId && "bg-accent font-semibold"
         )}
       >
         {hasChildren && (
@@ -447,10 +505,18 @@ function CategoryNode({
           {category.children!.map((child) => (
             <button
               key={child.id}
-              onClick={() => onPartTypeClick(child.id, engineId)}
+              onClick={() =>
+                onPartTypeClick({
+                  year,
+                  make,
+                  model,
+                  engine,
+                  category: child,
+                })
+              }
               className={cn(
                 "w-full text-left px-2 py-1 hover:bg-muted rounded flex items-center gap-1",
-                selectedPath.categoryId === child.id && selectedPath.engineId === engineId && "bg-primary/10 font-semibold"
+                selectedPath.categoryId === child.id && selectedPath.engineId === engineId && "bg-accent font-semibold"
               )}
             >
               <span className="w-3" />
@@ -462,3 +528,4 @@ function CategoryNode({
     </div>
   );
 }
+

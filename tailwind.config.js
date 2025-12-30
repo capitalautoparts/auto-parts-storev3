@@ -7,6 +7,13 @@ export default {
   theme: {
     extend: {
       colors: {
+        brand: {
+          navy: "var(--brand-navy)",
+          ink: "var(--brand-ink)",
+          cream: "var(--brand-cream)",
+          gold: "var(--brand-gold)",
+          sand: "var(--brand-sand)",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

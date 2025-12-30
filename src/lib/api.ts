@@ -1,11 +1,22 @@
-import axios from 'axios';
+import axios from "axios";
+import {
+  vehicleYears,
+  vehicleMakes,
+  vehicleModels,
+  vehicleEngines,
+  categories,
+  partCatalog,
+  yearToMakeIds,
+  modelsByMakeYear,
+} from "./mock-data";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === "true" || !API_BASE_URL;
 
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BASE_URL || "http://localhost:4000/api",
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
@@ -64,28 +75,94 @@ export interface Cart {
 }
 
 // Vehicle API
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const mockResponse = async <T,>(data: T): Promise<T> => {
+  await delay(120);
+  return data;
+};
+
+const getPartById = (partId: number): Part | null => {
+  const part = partCatalog.find((item) => item.id === partId);
+  return part ? { ...part } : null;
+};
+
+const cartKey = (sessionId: string) => `cap-cart:${sessionId}`;
+
+const readCart = (sessionId: string): Cart => {
+  if (typeof window === "undefined") {
+    return { id: 1, sessionId, items: [] };
+  }
+  const raw = window.localStorage.getItem(cartKey(sessionId));
+  if (!raw) {
+    const emptyCart = { id: 1, sessionId, items: [] };
+    window.localStorage.setItem(cartKey(sessionId), JSON.stringify(emptyCart));
+    return emptyCart;
+  }
+  try {
+    return JSON.parse(raw) as Cart;
+  } catch {
+    const fallback = { id: 1, sessionId, items: [] };
+    window.localStorage.setItem(cartKey(sessionId), JSON.stringify(fallback));
+    return fallback;
+  }
+};
+
+const writeCart = (cart: Cart) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(cartKey(cart.sessionId), JSON.stringify(cart));
+};
+
+const hydrateCart = (cart: Cart): Cart => ({
+  ...cart,
+  items: cart.items.map((item) => ({
+    ...item,
+    part: getPartById(item.partId),
+  })),
+});
+
 export const vehicleApi = {
   getYears: async (): Promise<VehicleYear[]> => {
-    const { data } = await apiClient.get('/vehicles/years');
+    if (USE_MOCKS) {
+      return mockResponse(vehicleYears);
+    }
+    const { data } = await apiClient.get("/vehicles/years");
     return data;
   },
 
   getMakes: async (year?: number): Promise<VehicleMake[]> => {
-    const { data } = await apiClient.get('/vehicles/makes', {
+    if (USE_MOCKS) {
+      if (!year || !yearToMakeIds[year]) {
+        return mockResponse(vehicleMakes);
+      }
+      const makeIds = yearToMakeIds[year];
+      return mockResponse(vehicleMakes.filter((make) => makeIds.includes(make.id)));
+    }
+    const { data } = await apiClient.get("/vehicles/makes", {
       params: { year },
     });
     return data;
   },
 
   getModels: async (makeId: number, year: number): Promise<VehicleModel[]> => {
-    const { data } = await apiClient.get('/vehicles/models', {
+    if (USE_MOCKS) {
+      const modelIds = modelsByMakeYear[year]?.[makeId];
+      const scopedModels = modelIds
+        ? vehicleModels.filter((model) => modelIds.includes(model.id))
+        : vehicleModels.filter((model) => model.makeId === makeId);
+      return mockResponse(scopedModels);
+    }
+    const { data } = await apiClient.get("/vehicles/models", {
       params: { makeId, year },
     });
     return data;
   },
 
   getEngines: async (modelId: number): Promise<VehicleEngine[]> => {
-    const { data } = await apiClient.get('/vehicles/engines', {
+    if (USE_MOCKS) {
+      return mockResponse(vehicleEngines.filter((engine) => engine.modelId === modelId));
+    }
+    const { data } = await apiClient.get("/vehicles/engines", {
       params: { modelId },
     });
     return data;
@@ -95,7 +172,10 @@ export const vehicleApi = {
 // Category API
 export const categoryApi = {
   getAll: async (): Promise<Category[]> => {
-    const { data } = await apiClient.get('/categories');
+    if (USE_MOCKS) {
+      return mockResponse(categories);
+    }
+    const { data } = await apiClient.get("/categories");
     return data;
   },
 };
@@ -103,7 +183,15 @@ export const categoryApi = {
 // Parts API
 export const partsApi = {
   getByCategory: async (categoryId: number, vehicleEngineId?: number): Promise<Part[]> => {
-    const { data } = await apiClient.get('/parts', {
+    if (USE_MOCKS) {
+      const filtered = partCatalog.filter((part) => {
+        const matchesCategory = part.categoryId === categoryId;
+        const matchesEngine = vehicleEngineId ? part.engineId === vehicleEngineId : true;
+        return matchesCategory && matchesEngine;
+      });
+      return mockResponse(filtered);
+    }
+    const { data } = await apiClient.get("/parts", {
       params: { categoryId, vehicleEngineId },
     });
     return data;
@@ -113,14 +201,29 @@ export const partsApi = {
 // Cart API
 export const cartApi = {
   get: async (sessionId: string): Promise<Cart> => {
-    const { data } = await apiClient.get('/cart', {
+    if (USE_MOCKS) {
+      return mockResponse(hydrateCart(readCart(sessionId)));
+    }
+    const { data } = await apiClient.get("/cart", {
       params: { sessionId },
     });
     return data;
   },
 
   addItem: async (sessionId: string, partId: number, quantity: number): Promise<Cart> => {
-    const { data } = await apiClient.post('/cart/items', {
+    if (USE_MOCKS) {
+      const cart = readCart(sessionId);
+      const existing = cart.items.find((item) => item.partId === partId);
+      if (existing) {
+        existing.quantity += quantity;
+      } else {
+        const nextId = cart.items.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+        cart.items.push({ id: nextId, partId, quantity });
+      }
+      writeCart(cart);
+      return mockResponse(hydrateCart(cart));
+    }
+    const { data } = await apiClient.post("/cart/items", {
       sessionId,
       partId,
       quantity,
@@ -129,6 +232,31 @@ export const cartApi = {
   },
 
   updateQuantity: async (itemId: number, quantity: number): Promise<Cart> => {
+    if (USE_MOCKS) {
+      if (typeof window === "undefined") {
+        return mockResponse({ id: 1, sessionId: "", items: [] });
+      }
+      const carts = Array.from({ length: window.localStorage.length })
+        .map((_, index) => window.localStorage.key(index))
+        .filter((key): key is string => !!key && key.startsWith("cap-cart:"));
+
+      for (const key of carts) {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+          const cart = JSON.parse(raw) as Cart;
+          const item = cart.items.find((entry) => entry.id === itemId);
+          if (item) {
+            item.quantity = quantity;
+            writeCart(cart);
+            return mockResponse(hydrateCart(cart));
+          }
+        } catch {
+          continue;
+        }
+      }
+      return mockResponse({ id: 1, sessionId: "", items: [] });
+    }
     const { data } = await apiClient.put(`/cart/items/${itemId}`, {
       quantity,
     });
@@ -136,6 +264,31 @@ export const cartApi = {
   },
 
   removeItem: async (itemId: number): Promise<void> => {
+    if (USE_MOCKS) {
+      if (typeof window === "undefined") {
+        return;
+      }
+      const keys = Array.from({ length: window.localStorage.length })
+        .map((_, index) => window.localStorage.key(index))
+        .filter((key): key is string => !!key && key.startsWith("cap-cart:"));
+
+      for (const key of keys) {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+          const cart = JSON.parse(raw) as Cart;
+          const nextItems = cart.items.filter((item) => item.id !== itemId);
+          if (nextItems.length !== cart.items.length) {
+            cart.items = nextItems;
+            writeCart(cart);
+            return;
+          }
+        } catch {
+          continue;
+        }
+      }
+      return;
+    }
     await apiClient.delete(`/cart/items/${itemId}`);
   },
 };

@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
@@ -42,39 +43,46 @@
 }
 
 :root {
-  --primary: oklch(0.45 0.22 27);
-  --primary-foreground: oklch(1 0 0);
-  --sidebar-primary: oklch(0.45 0.22 27);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --chart-1: oklch(0.45 0.22 27);
-  --chart-2: oklch(0.35 0.18 27);
-  --chart-3: oklch(0.55 0.20 27);
-  --chart-4: oklch(0.40 0.20 27);
-  --chart-5: oklch(0.30 0.15 27);
+  --font-sans: "IBM Plex Sans", sans-serif;
+  --font-display: "Barlow Condensed", sans-serif;
+  --brand-navy: #c40c0c;
+  --brand-ink: #1f1f1f;
+  --brand-cream: #ffffff;
+  --brand-gold: #f2f2f2;
+  --brand-sand: #e6e6e6;
+  --primary: 0 88% 41%;
+  --primary-foreground: 20 100% 98%;
+  --sidebar-primary: 0 88% 41%;
+  --sidebar-primary-foreground: 20 100% 98%;
+  --chart-1: 0 88% 41%;
+  --chart-2: 15 78% 65%;
+  --chart-3: 142 46% 40%;
+  --chart-4: 210 55% 45%;
+  --chart-5: 272 45% 48%;
   --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.235 0.015 65);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.235 0.015 65);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.235 0.015 65);
-  --secondary: oklch(0.98 0.001 286.375);
-  --secondary-foreground: oklch(0.4 0.015 65);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.141 0.005 285.823);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.623 0.214 259.815);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.235 0.015 65);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.623 0.214 259.815);
+  --background: 0 0% 100%;
+  --foreground: 0 0% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 12%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 15%;
+  --muted: 0 0% 95%;
+  --muted-foreground: 0 0% 40%;
+  --accent: 0 75% 95%;
+  --accent-foreground: 0 35% 18%;
+  --destructive: 0 88% 41%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 85%;
+  --input: 0 0% 85%;
+  --ring: 0 88% 41%;
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 0 0% 12%;
+  --sidebar-accent: 0 0% 95%;
+  --sidebar-accent-foreground: 0 0% 12%;
+  --sidebar-border: 40 18% 82%;
+  --sidebar-ring: 43 90% 55%;
 }
 
 .dark {
@@ -118,6 +126,14 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    background-image: none;
+  }
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display);
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -129,6 +145,64 @@
   input[type="checkbox"]:not(:disabled),
   input[type="radio"]:not(:disabled) {
     @apply cursor-pointer;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  .animate-rise {
+    animation: rise-in 0.6s ease-out both;
+  }
+  .animate-fade {
+    animation: fade-in 0.5s ease-out both;
+  }
+  .stagger-children > * {
+    animation: rise-in 0.6s ease-out both;
+  }
+  .stagger-children > *:nth-child(1) {
+    animation-delay: 0.05s;
+  }
+  .stagger-children > *:nth-child(2) {
+    animation-delay: 0.12s;
+  }
+  .stagger-children > *:nth-child(3) {
+    animation-delay: 0.18s;
+  }
+  .stagger-children > *:nth-child(4) {
+    animation-delay: 0.24s;
+  }
+  .stagger-children > *:nth-child(5) {
+    animation-delay: 0.3s;
+  }
+  .stagger-children > *:nth-child(6) {
+    animation-delay: 0.36s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-fade,
+  .stagger-children > * {
+    animation: none;
   }
 }
 
@@ -170,7 +244,7 @@
     .container {
       padding-left: 2rem; /* 32px - desktop padding */
       padding-right: 2rem;
-      max-width: 1280px; /* Standard content width */
+      max-width: 1440px; /* Wider layout for catalog tables */
     }
   }
 }

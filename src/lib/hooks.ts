@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
+import type { DependencyList } from "react";
 
 export interface UseQueryResult<T> {
   data: T | undefined;
@@ -9,7 +10,7 @@ export interface UseQueryResult<T> {
 
 export function useQuery<T>(
   queryFn: () => Promise<T>,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; deps?: DependencyList }
 ): UseQueryResult<T> {
   const [data, setData] = useState<T | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,7 +34,7 @@ export function useQuery<T>(
 
   useEffect(() => {
     fetchData();
-  }, [options?.enabled]);
+  }, [options?.enabled, ...(options?.deps ?? [])]);
 
   return {
     data,
