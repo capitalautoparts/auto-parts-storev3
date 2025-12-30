@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Header } from "@/components/Header";
 import { PartsTable } from "@/components/PartsTable";
 import { RightCartPanel } from "@/components/RightCartPanel";
-import { TreeSidebar, type PartSelection } from "@/components/TreeSidebar";
+import { TreeSidebar, type PartSelection, type TreeSidebarHandle } from "@/components/TreeSidebar";
 import { toast, Toaster } from "sonner";
 import { Loader2 } from "lucide-react";
-import { partsApi, cartApi, categoryApi } from "@/lib/api";
+import { partsApi, cartApi, categoryApi, type VehicleSearchResult } from "@/lib/api";
 import { useQuery, useMutation } from "@/lib/hooks";
 
 export default function App() {
@@ -14,6 +14,23 @@ export default function App() {
   const [selectedFitment, setSelectedFitment] = useState<PartSelection | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const treeSidebarRef = useRef<TreeSidebarHandle>(null);
+
+  const handleVehicleSearch = (result: VehicleSearchResult) => {
+    // Expand tree to the selected vehicle
+    treeSidebarRef.current?.expandToVehicle(result);
+    // Clear the parts filter when navigating via search
+    setSearchQuery("");
+    toast.success(`Expanded to ${result.label}`);
+  };
+
+  const handlePartSearch = (result: VehicleSearchResult) => {
+    // For part search, we could filter or highlight
+    if (result.partNumber) {
+      setSearchQuery(result.partNumber);
+      toast.info(`Filtering by part number: ${result.partNumber}`);
+    }
+  };
 
   const { data: categoriesData } = useQuery(() => categoryApi.getAll());
 
@@ -119,17 +136,20 @@ export default function App() {
         cartItemCount={cartData?.items?.length || 0}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        onVehicleSearch={handleVehicleSearch}
+        onPartSearch={handlePartSearch}
       />
 
-      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
-        <div className="flex-1 lg:overflow-auto">
-          <div className="container mx-auto py-4">
-            <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-              <TreeSidebar onPartTypeSelect={handlePartTypeSelect} />
-
-              <div>
+      <div className="flex-1 flex flex-row overflow-hidden">
+        {/* Main Content Area - Tree with inline parts */}
+        <div className="flex-1 overflow-auto p-4">
+          <TreeSidebar
+            ref={treeSidebarRef}
+            onPartTypeSelect={handlePartTypeSelect}
+            renderPartsInline={() => (
+              <div className="border-t border-border pt-4">
                 {breadcrumb && (
-                  <div className="mb-4 rounded border border-border bg-card px-4 py-3 shadow-sm animate-rise">
+                  <div className="mb-4 py-3 animate-rise">
                     <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                       Selected fitment
                     </div>
@@ -151,21 +171,20 @@ export default function App() {
                 ) : filteredParts.length > 0 ? (
                   <PartsTable parts={filteredParts} onAddToCart={handleAddToCart} />
                 ) : (
-                  <div className="bg-card rounded-lg shadow p-12 text-center">
+                  <div className="p-12 text-center">
                     <p className="text-muted-foreground">
-                      {!selectedEngineId || !selectedCategoryId
-                        ? "Select a vehicle, engine, and part type to view parts."
-                        : searchQuery
-                          ? "No parts match that search. Try a different keyword."
-                          : "No parts found for this category and vehicle combination."}
+                      {searchQuery
+                        ? "No parts match that search. Try a different keyword."
+                        : "No parts found for this category and vehicle combination."}
                     </p>
                   </div>
                 )}
               </div>
-            </div>
-          </div>
+            )}
+          />
         </div>
 
+        {/* Cart Sidebar - only true sidebar */}
         <RightCartPanel
           items={cartData?.items || []}
           onUpdateQuantity={handleUpdateQuantity}

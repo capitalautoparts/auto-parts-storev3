@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useState, useImperativeHandle, forwardRef } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import {
   vehicleApi,
@@ -9,6 +8,7 @@ import {
   type VehicleModel,
   type VehicleEngine,
   type Category,
+  type VehicleSearchResult,
 } from "@/lib/api";
 import { useQuery } from "@/lib/hooks";
 
@@ -20,17 +20,23 @@ export interface PartSelection {
   category: Category;
 }
 
-interface TreeSidebarProps {
-  onPartTypeSelect: (selection: PartSelection) => void;
+export interface TreeSidebarHandle {
+  expandToVehicle: (result: VehicleSearchResult) => void;
 }
 
-export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
+interface TreeSidebarProps {
+  onPartTypeSelect: (selection: PartSelection) => void;
+  renderPartsInline?: (selection: PartSelection) => React.ReactNode;
+}
+
+export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
+  function TreeSidebar({ onPartTypeSelect, renderPartsInline }, ref) {
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedMakes, setExpandedMakes] = useState<Set<string>>(new Set());
   const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
   const [expandedEngines, setExpandedEngines] = useState<Set<number>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
-  
+
   const [selectedPath, setSelectedPath] = useState<{
     year?: number;
     makeId?: number;
@@ -38,9 +44,43 @@ export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
     engineId?: number;
     categoryId?: number;
   }>({});
+  const [selectedFitment, setSelectedFitment] = useState<PartSelection | null>(null);
 
   const { data: yearsData } = useQuery(() => vehicleApi.getYears());
   const { data: categoriesData } = useQuery(() => categoryApi.getAll());
+
+  // Expose expandToVehicle function via ref
+  useImperativeHandle(ref, () => ({
+    expandToVehicle: (result: VehicleSearchResult) => {
+      if (!result.year) return;
+
+      // Expand year
+      setExpandedYears(prev => new Set(prev).add(result.year!));
+
+      // Expand make if provided
+      if (result.makeId) {
+        setExpandedMakes(prev => new Set(prev).add(`${result.year}-${result.makeId}`));
+      }
+
+      // Expand model if provided
+      if (result.makeId && result.modelId) {
+        setExpandedModels(prev => new Set(prev).add(`${result.makeId}-${result.modelId}`));
+      }
+
+      // Expand engine if provided
+      if (result.engineId) {
+        setExpandedEngines(prev => new Set(prev).add(result.engineId!));
+      }
+
+      // Update selected path for highlighting
+      setSelectedPath({
+        year: result.year,
+        makeId: result.makeId,
+        modelId: result.modelId,
+        engineId: result.engineId,
+      });
+    },
+  }));
 
   const toggleYear = (year: number) => {
     const newExpanded = new Set(expandedYears);
@@ -102,6 +142,7 @@ export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
       engineId: selection.engine.id,
       categoryId: selection.category.id,
     });
+    setSelectedFitment(selection);
     onPartTypeSelect(selection);
   };
 
@@ -113,14 +154,13 @@ export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
     : [];
 
   return (
-    <div className="w-full bg-white border border-border flex flex-col h-full">
-      <div className="px-3 py-2 text-xs uppercase tracking-[0.3em] font-display border-b border-border text-foreground">
+    <div className="w-full">
+      <div className="py-2 text-xs uppercase tracking-[0.3em] font-display text-foreground font-semibold">
         Part Catalog
       </div>
-      
-      <ScrollArea className="flex-1">
-        <div className="p-2 text-sm">
-          {yearsData?.map((yearData) => (
+
+      <div className="text-sm">
+        {yearsData?.map((yearData) => (
             <YearNode
               key={yearData.year}
               year={yearData.year}
@@ -132,6 +172,8 @@ export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
               expandedCategories={expandedCategories}
               categoryTree={categoryTree}
               selectedPath={selectedPath}
+              selectedFitment={selectedFitment}
+              renderPartsInline={renderPartsInline}
               onToggleMake={toggleMake}
               onToggleModel={toggleModel}
               onToggleEngine={toggleEngine}
@@ -139,11 +181,10 @@ export function TreeSidebar({ onPartTypeSelect }: TreeSidebarProps) {
               onPartTypeClick={handlePartTypeClick}
             />
           ))}
-        </div>
-      </ScrollArea>
+      </div>
     </div>
   );
-}
+});
 
 interface YearNodeProps {
   year: number;
@@ -155,6 +196,8 @@ interface YearNodeProps {
   expandedCategories: Set<number>;
   categoryTree: any[];
   selectedPath: any;
+  selectedFitment: PartSelection | null;
+  renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onToggleMake: (year: number, makeId: number) => void;
   onToggleModel: (makeId: number, modelId: number) => void;
   onToggleEngine: (engineId: number) => void;
@@ -172,6 +215,8 @@ function YearNode({
   expandedCategories,
   categoryTree,
   selectedPath,
+  selectedFitment,
+  renderPartsInline,
   onToggleMake,
   onToggleModel,
   onToggleEngine,
@@ -211,6 +256,8 @@ function YearNode({
               expandedCategories={expandedCategories}
               categoryTree={categoryTree}
               selectedPath={selectedPath}
+              selectedFitment={selectedFitment}
+              renderPartsInline={renderPartsInline}
               onToggleModel={onToggleModel}
               onToggleEngine={onToggleEngine}
               onToggleCategory={onToggleCategory}
@@ -233,6 +280,8 @@ interface MakeNodeProps {
   expandedCategories: Set<number>;
   categoryTree: any[];
   selectedPath: any;
+  selectedFitment: PartSelection | null;
+  renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onToggleModel: (makeId: number, modelId: number) => void;
   onToggleEngine: (engineId: number) => void;
   onToggleCategory: (categoryId: number) => void;
@@ -249,6 +298,8 @@ function MakeNode({
   expandedCategories,
   categoryTree,
   selectedPath,
+  selectedFitment,
+  renderPartsInline,
   onToggleModel,
   onToggleEngine,
   onToggleCategory,
@@ -293,6 +344,8 @@ function MakeNode({
               expandedCategories={expandedCategories}
               categoryTree={categoryTree}
               selectedPath={selectedPath}
+              selectedFitment={selectedFitment}
+              renderPartsInline={renderPartsInline}
               onToggleEngine={onToggleEngine}
               onToggleCategory={onToggleCategory}
               onPartTypeClick={onPartTypeClick}
@@ -315,6 +368,8 @@ interface ModelNodeProps {
   expandedCategories: Set<number>;
   categoryTree: any[];
   selectedPath: any;
+  selectedFitment: PartSelection | null;
+  renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onToggleEngine: (engineId: number) => void;
   onToggleCategory: (categoryId: number) => void;
   onPartTypeClick: (selection: PartSelection) => void;
@@ -330,6 +385,8 @@ function ModelNode({
   expandedCategories,
   categoryTree,
   selectedPath,
+  selectedFitment,
+  renderPartsInline,
   onToggleEngine,
   onToggleCategory,
   onPartTypeClick,
@@ -367,6 +424,8 @@ function ModelNode({
               expandedCategories={expandedCategories}
               categoryTree={categoryTree}
               selectedPath={selectedPath}
+              selectedFitment={selectedFitment}
+              renderPartsInline={renderPartsInline}
               onToggleCategory={onToggleCategory}
               onPartTypeClick={onPartTypeClick}
             />
@@ -387,6 +446,8 @@ interface EngineNodeProps {
   expandedCategories: Set<number>;
   categoryTree: any[];
   selectedPath: any;
+  selectedFitment: PartSelection | null;
+  renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onToggleCategory: (categoryId: number) => void;
   onPartTypeClick: (selection: PartSelection) => void;
 }
@@ -401,6 +462,8 @@ function EngineNode({
   expandedCategories,
   categoryTree,
   selectedPath,
+  selectedFitment,
+  renderPartsInline,
   onToggleCategory,
   onPartTypeClick,
 }: EngineNodeProps) {
@@ -432,6 +495,8 @@ function EngineNode({
               isExpanded={expandedCategories.has(category.id)}
               onToggle={() => onToggleCategory(category.id)}
               selectedPath={selectedPath}
+              selectedFitment={selectedFitment}
+              renderPartsInline={renderPartsInline}
               onPartTypeClick={onPartTypeClick}
             />
           ))}
@@ -451,6 +516,8 @@ interface CategoryNodeProps {
   isExpanded: boolean;
   onToggle: () => void;
   selectedPath: any;
+  selectedFitment: PartSelection | null;
+  renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onPartTypeClick: (selection: PartSelection) => void;
 }
 
@@ -464,9 +531,13 @@ function CategoryNode({
   isExpanded,
   onToggle,
   selectedPath,
+  selectedFitment,
+  renderPartsInline,
   onPartTypeClick,
 }: CategoryNodeProps) {
   const hasChildren = category.children && category.children.length > 0;
+
+  const isThisCategorySelected = !hasChildren && selectedPath.categoryId === category.id && selectedPath.engineId === engineId;
 
   return (
     <div>
@@ -500,29 +571,46 @@ function CategoryNode({
         <span>{category.name}</span>
       </button>
 
+      {/* Render parts inline for leaf categories */}
+      {isThisCategorySelected && selectedFitment && renderPartsInline && (
+        <div className="mt-4 -ml-6">
+          {renderPartsInline(selectedFitment)}
+        </div>
+      )}
+
       {isExpanded && hasChildren && (
         <div className="ml-3">
-          {category.children!.map((child) => (
-            <button
-              key={child.id}
-              onClick={() =>
-                onPartTypeClick({
-                  year,
-                  make,
-                  model,
-                  engine,
-                  category: child,
-                })
-              }
-              className={cn(
-                "w-full text-left px-2 py-1 hover:bg-muted rounded flex items-center gap-1",
-                selectedPath.categoryId === child.id && selectedPath.engineId === engineId && "bg-accent font-semibold"
-              )}
-            >
-              <span className="w-3" />
-              <span>{child.name}</span>
-            </button>
-          ))}
+          {category.children!.map((child) => {
+            const isChildSelected = selectedPath.categoryId === child.id && selectedPath.engineId === engineId;
+            return (
+              <div key={child.id}>
+                <button
+                  onClick={() =>
+                    onPartTypeClick({
+                      year,
+                      make,
+                      model,
+                      engine,
+                      category: child,
+                    })
+                  }
+                  className={cn(
+                    "w-full text-left px-2 py-1 hover:bg-muted rounded flex items-center gap-1",
+                    isChildSelected && "bg-accent font-semibold"
+                  )}
+                >
+                  <span className="w-3" />
+                  <span>{child.name}</span>
+                </button>
+                {/* Render parts inline for selected child categories */}
+                {isChildSelected && selectedFitment && renderPartsInline && (
+                  <div className="mt-4 -ml-6">
+                    {renderPartsInline(selectedFitment)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

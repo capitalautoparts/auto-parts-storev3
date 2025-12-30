@@ -1,17 +1,21 @@
-import { Search, ShoppingCart } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { ShoppingCart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { VehicleSearchBar } from "@/components/VehicleSearchBar";
+import type { VehicleSearchResult } from "@/lib/api";
 
 interface HeaderProps {
   cartItemCount: number;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  onVehicleSearch?: (result: VehicleSearchResult) => void;
+  onPartSearch?: (result: VehicleSearchResult) => void;
 }
 
 export function Header({
   cartItemCount,
-  searchQuery,
+  onVehicleSearch,
+  onPartSearch,
   onSearchChange,
 }: HeaderProps) {
   return (
@@ -26,9 +30,6 @@ export function Header({
               <h1 className="text-2xl font-display uppercase tracking-[0.08em]">
                 Capital Auto Parts
               </h1>
-              <p className="text-[11px] uppercase tracking-[0.3em] text-white/85">
-                All the parts your car will ever need
-              </p>
             </div>
           </div>
 
@@ -56,32 +57,28 @@ export function Header({
         </div>
       </div>
 
-      <div className="bg-white text-brand-ink border-b border-border">
+      <div className="bg-brand-navy text-brand-cream border-b border-white/10">
         <div className="container mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] font-semibold">
-            <button className="px-3 py-1 border border-border rounded">Part Catalog</button>
-            <button className="px-3 py-1 border border-border rounded">Part Number Search</button>
-            <button className="px-3 py-1 border border-border rounded">Tools</button>
+            <button className="px-3 py-1 border border-white/50 rounded hover:bg-white/10 transition-colors">Part Catalog</button>
+            <button className="px-3 py-1 border border-white/50 rounded hover:bg-white/10 transition-colors">Part Number Search</button>
+            <button className="px-3 py-1 border border-white/50 rounded hover:bg-white/10 transition-colors">Tools</button>
           </div>
 
           <div className="flex-1 max-w-xl w-full">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                value={searchQuery}
-                placeholder="Search by part number, keyword, or brand..."
-                className="pl-10 bg-white text-brand-ink border border-border shadow-sm"
-                onChange={(e) => onSearchChange(e.target.value)}
-              />
-            </div>
+            <VehicleSearchBar
+              onVehicleSelect={onVehicleSearch || (() => {})}
+              onPartSelect={onPartSearch}
+              onTextSearch={onSearchChange}
+              className="w-full"
+            />
           </div>
 
           <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" className="border-border text-brand-ink">
+            <Button type="button" variant="outline" className="border-white/50 text-brand-cream hover:bg-white/10">
               VIN Lookup
             </Button>
-            <Button type="button" variant="outline" className="border-border text-brand-ink">
+            <Button type="button" variant="outline" className="border-white/50 text-brand-cream hover:bg-white/10">
               Need Help?
             </Button>
           </div>

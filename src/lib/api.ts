@@ -121,7 +121,141 @@ const hydrateCart = (cart: Cart): Cart => ({
   })),
 });
 
+export interface VehicleSearchResult {
+  type: 'vehicle' | 'part';
+  label: string;
+  year?: number;
+  makeId?: number;
+  makeName?: string;
+  modelId?: number;
+  modelName?: string;
+  engineId?: number;
+  engineName?: string;
+  partNumber?: string;
+  partId?: number;
+}
+
 export const vehicleApi = {
+  search: async (query: string): Promise<VehicleSearchResult[]> => {
+    if (USE_MOCKS) {
+      const q = query.toLowerCase().trim();
+      if (!q) return mockResponse([]);
+
+      const results: VehicleSearchResult[] = [];
+      const queryParts = q.split(/\s+/);
+
+      // Parse potential year from query
+      const yearMatch = queryParts.find(p => /^\d{4}$/.test(p));
+      const parsedYear = yearMatch ? parseInt(yearMatch, 10) : null;
+      const nonYearParts = queryParts.filter(p => !/^\d{4}$/.test(p));
+
+      // Search for vehicles
+      for (const yearData of vehicleYears) {
+        const year = yearData.year;
+        // If user typed a year, only include that year
+        if (parsedYear && year !== parsedYear) continue;
+
+        const makeIds = yearToMakeIds[year] || [];
+        for (const makeId of makeIds) {
+          const make = vehicleMakes.find(m => m.id === makeId);
+          if (!make) continue;
+
+          const makeLower = make.name.toLowerCase();
+
+          // Check if make matches any non-year query parts
+          const makeMatches = nonYearParts.length === 0 ||
+            nonYearParts.some(p => makeLower.includes(p) || makeLower.startsWith(p));
+
+          // Skip if no year and make doesn't match
+          if (!makeMatches && !parsedYear) continue;
+
+          // If we have a year, suggest the make if it matches (or no filter yet)
+          if (parsedYear) {
+            const shouldShowMake = nonYearParts.length === 0 ||
+              nonYearParts.some(p => makeLower.startsWith(p) || makeLower.includes(p));
+
+            if (shouldShowMake) {
+              results.push({
+                type: 'vehicle',
+                label: `${year} ${make.name}`,
+                year,
+                makeId: make.id,
+                makeName: make.name,
+              });
+            }
+          }
+
+          // Search models if make matches
+          if (makeMatches || parsedYear) {
+            const modelIds = modelsByMakeYear[year]?.[makeId] || [];
+            for (const modelId of modelIds) {
+              const model = vehicleModels.find(m => m.id === modelId);
+              if (!model) continue;
+
+              const modelLower = model.name.toLowerCase();
+              // Check if model matches remaining query parts after removing make matches
+              const remainingParts = nonYearParts.filter(p => !makeLower.includes(p));
+              const modelMatches = remainingParts.length === 0 ||
+                remainingParts.some(p => modelLower.includes(p) || modelLower.startsWith(p));
+
+              if (modelMatches) {
+                results.push({
+                  type: 'vehicle',
+                  label: `${year} ${make.name} ${model.name}`,
+                  year,
+                  makeId: make.id,
+                  makeName: make.name,
+                  modelId: model.id,
+                  modelName: model.name,
+                });
+
+                // Also add engine options
+                const engines = vehicleEngines.filter(e => e.modelId === modelId);
+                for (const engine of engines) {
+                  results.push({
+                    type: 'vehicle',
+                    label: `${year} ${make.name} ${model.name} ${engine.name}`,
+                    year,
+                    makeId: make.id,
+                    makeName: make.name,
+                    modelId: model.id,
+                    modelName: model.name,
+                    engineId: engine.id,
+                    engineName: engine.name,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Search for parts by part number
+      for (const part of partCatalog) {
+        if (part.partNumber.toLowerCase().includes(q) || part.brand.toLowerCase().includes(q)) {
+          results.push({
+            type: 'part',
+            label: `${part.brand} ${part.partNumber}`,
+            partNumber: part.partNumber,
+            partId: part.id,
+          });
+        }
+      }
+
+      // Dedupe and limit results
+      const seen = new Set<string>();
+      const deduped = results.filter(r => {
+        if (seen.has(r.label)) return false;
+        seen.add(r.label);
+        return true;
+      });
+
+      return mockResponse(deduped.slice(0, 10));
+    }
+    const { data } = await apiClient.get("/vehicles/search", { params: { q: query } });
+    return data;
+  },
+
   getYears: async (): Promise<VehicleYear[]> => {
     if (USE_MOCKS) {
       return mockResponse(vehicleYears);
