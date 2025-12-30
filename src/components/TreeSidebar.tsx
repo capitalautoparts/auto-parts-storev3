@@ -22,15 +22,27 @@ export interface PartSelection {
 
 export interface TreeSidebarHandle {
   expandToVehicle: (result: VehicleSearchResult) => void;
+  expandToCategory: (result: VehicleSearchResult) => void;
+}
+
+export interface VehicleExpansion {
+  year: number;
+  makeId: number;
+  makeName: string;
+  modelId: number;
+  modelName: string;
+  engineId: number;
+  engineName: string;
 }
 
 interface TreeSidebarProps {
   onPartTypeSelect: (selection: PartSelection) => void;
+  onVehicleExpand?: (vehicle: VehicleExpansion) => void;
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
 }
 
 export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
-  function TreeSidebar({ onPartTypeSelect, renderPartsInline }, ref) {
+  function TreeSidebar({ onPartTypeSelect, onVehicleExpand, renderPartsInline }, ref) {
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedMakes, setExpandedMakes] = useState<Set<string>>(new Set());
   const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
@@ -49,7 +61,7 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
   const { data: yearsData } = useQuery(() => vehicleApi.getYears());
   const { data: categoriesData } = useQuery(() => categoryApi.getAll());
 
-  // Expose expandToVehicle function via ref
+  // Expose expandToVehicle and expandToCategory functions via ref
   useImperativeHandle(ref, () => ({
     expandToVehicle: (result: VehicleSearchResult) => {
       if (!result.year) return;
@@ -79,6 +91,61 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
         modelId: result.modelId,
         engineId: result.engineId,
       });
+    },
+    expandToCategory: (result: VehicleSearchResult) => {
+      if (!result.year || !result.makeId || !result.modelId || !result.engineId || !result.categoryId) return;
+
+      // Expand all levels to show the category
+      setExpandedYears(prev => new Set(prev).add(result.year!));
+      setExpandedMakes(prev => new Set(prev).add(`${result.year}-${result.makeId}`));
+      setExpandedModels(prev => new Set(prev).add(`${result.makeId}-${result.modelId}`));
+      setExpandedEngines(prev => new Set(prev).add(result.engineId!));
+
+      // Find the category and expand parent if needed
+      const category = categoriesData?.find(c => c.id === result.categoryId);
+      if (category?.parentId) {
+        setExpandedCategories(prev => new Set(prev).add(category.parentId!));
+      }
+
+      // Update selected path
+      setSelectedPath({
+        year: result.year,
+        makeId: result.makeId,
+        modelId: result.modelId,
+        engineId: result.engineId,
+        categoryId: result.categoryId,
+      });
+
+      // Also create and set the fitment for inline parts display
+      if (categoriesData) {
+        const cat = categoriesData.find(c => c.id === result.categoryId);
+        if (cat) {
+          // We need to construct the PartSelection
+          // The make, model, engine data will be fetched by the tree nodes
+          // For now, we'll use placeholder data that will be populated when the tree renders
+          const makesForYear = vehicleApi.getMakes(result.year!);
+          const modelsForMake = vehicleApi.getModels(result.makeId!, result.year!);
+          const enginesForModel = vehicleApi.getEngines(result.modelId!);
+
+          Promise.all([makesForYear, modelsForMake, enginesForModel]).then(([makes, models, engines]) => {
+            const make = makes.find(m => m.id === result.makeId);
+            const model = models.find(m => m.id === result.modelId);
+            const engine = engines.find(e => e.id === result.engineId);
+
+            if (make && model && engine) {
+              const selection: PartSelection = {
+                year: result.year!,
+                make,
+                model,
+                engine,
+                category: cat,
+              };
+              setSelectedFitment(selection);
+              onPartTypeSelect(selection);
+            }
+          });
+        }
+      }
     },
   }));
 
@@ -114,12 +181,17 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
     setExpandedModels(newExpanded);
   };
 
-  const toggleEngine = (engineId: number) => {
+  const toggleEngine = (engineId: number, vehicleInfo?: VehicleExpansion) => {
     const newExpanded = new Set(expandedEngines);
-    if (newExpanded.has(engineId)) {
-      newExpanded.delete(engineId);
-    } else {
+    const isExpanding = !newExpanded.has(engineId);
+    if (isExpanding) {
       newExpanded.add(engineId);
+      // Notify parent when engine is expanded
+      if (vehicleInfo && onVehicleExpand) {
+        onVehicleExpand(vehicleInfo);
+      }
+    } else {
+      newExpanded.delete(engineId);
     }
     setExpandedEngines(newExpanded);
   };
@@ -200,7 +272,7 @@ interface YearNodeProps {
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onToggleMake: (year: number, makeId: number) => void;
   onToggleModel: (makeId: number, modelId: number) => void;
-  onToggleEngine: (engineId: number) => void;
+  onToggleEngine: (engineId: number, vehicleInfo?: VehicleExpansion) => void;
   onToggleCategory: (categoryId: number) => void;
   onPartTypeClick: (selection: PartSelection) => void;
 }
@@ -283,7 +355,7 @@ interface MakeNodeProps {
   selectedFitment: PartSelection | null;
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onToggleModel: (makeId: number, modelId: number) => void;
-  onToggleEngine: (engineId: number) => void;
+  onToggleEngine: (engineId: number, vehicleInfo?: VehicleExpansion) => void;
   onToggleCategory: (categoryId: number) => void;
   onPartTypeClick: (selection: PartSelection) => void;
 }
@@ -370,7 +442,7 @@ interface ModelNodeProps {
   selectedPath: any;
   selectedFitment: PartSelection | null;
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
-  onToggleEngine: (engineId: number) => void;
+  onToggleEngine: (engineId: number, vehicleInfo?: VehicleExpansion) => void;
   onToggleCategory: (categoryId: number) => void;
   onPartTypeClick: (selection: PartSelection) => void;
 }
@@ -420,7 +492,15 @@ function ModelNode({
               make={make}
               model={model}
               isExpanded={expandedEngines.has(engine.id)}
-              onToggle={() => onToggleEngine(engine.id)}
+              onToggle={() => onToggleEngine(engine.id, {
+                year,
+                makeId: make.id,
+                makeName: make.name,
+                modelId: model.id,
+                modelName: model.name,
+                engineId: engine.id,
+                engineName: engine.name,
+              })}
               expandedCategories={expandedCategories}
               categoryTree={categoryTree}
               selectedPath={selectedPath}

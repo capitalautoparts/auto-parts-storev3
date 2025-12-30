@@ -2,16 +2,17 @@ import { useState, useMemo, useRef } from "react";
 import { Header } from "@/components/Header";
 import { PartsTable } from "@/components/PartsTable";
 import { RightCartPanel } from "@/components/RightCartPanel";
-import { TreeSidebar, type PartSelection, type TreeSidebarHandle } from "@/components/TreeSidebar";
+import { TreeSidebar, type PartSelection, type TreeSidebarHandle, type VehicleExpansion } from "@/components/TreeSidebar";
 import { toast, Toaster } from "sonner";
 import { Loader2 } from "lucide-react";
-import { partsApi, cartApi, categoryApi, type VehicleSearchResult } from "@/lib/api";
+import { partsApi, cartApi, categoryApi, type VehicleSearchResult, type VehicleContext } from "@/lib/api";
 import { useQuery, useMutation } from "@/lib/hooks";
 
 export default function App() {
   const [selectedEngineId, setSelectedEngineId] = useState<number>();
   const [selectedCategoryId, setSelectedCategoryId] = useState<number>();
   const [selectedFitment, setSelectedFitment] = useState<PartSelection | null>(null);
+  const [expandedVehicle, setExpandedVehicle] = useState<VehicleExpansion | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
   const treeSidebarRef = useRef<TreeSidebarHandle>(null);
@@ -21,6 +22,20 @@ export default function App() {
     treeSidebarRef.current?.expandToVehicle(result);
     // Clear the parts filter when navigating via search
     setSearchQuery("");
+
+    // If a full vehicle with engine is selected, set the vehicle context for category search
+    if (result.year && result.makeId && result.makeName && result.modelId && result.modelName && result.engineId && result.engineName) {
+      setExpandedVehicle({
+        year: result.year,
+        makeId: result.makeId,
+        makeName: result.makeName,
+        modelId: result.modelId,
+        modelName: result.modelName,
+        engineId: result.engineId,
+        engineName: result.engineName,
+      });
+    }
+
     toast.success(`Expanded to ${result.label}`);
   };
 
@@ -30,6 +45,38 @@ export default function App() {
       setSearchQuery(result.partNumber);
       toast.info(`Filtering by part number: ${result.partNumber}`);
     }
+  };
+
+  const handleCategorySearch = (result: VehicleSearchResult) => {
+    // When searching for categories within vehicle context
+    if (result.categoryId) {
+      // Use the tree's expandToCategory to expand the tree and select the category
+      treeSidebarRef.current?.expandToCategory(result);
+      toast.success(`Showing ${result.categoryName || 'parts'}`);
+    }
+  };
+
+  // Build vehicle context from selected fitment or expanded vehicle for context-aware search
+  const vehicleContext: VehicleContext | null = selectedFitment ? {
+    year: selectedFitment.year,
+    makeId: selectedFitment.make.id,
+    makeName: selectedFitment.make.name,
+    modelId: selectedFitment.model.id,
+    modelName: selectedFitment.model.name,
+    engineId: selectedFitment.engine.id,
+    engineName: selectedFitment.engine.name,
+  } : expandedVehicle ? {
+    year: expandedVehicle.year,
+    makeId: expandedVehicle.makeId,
+    makeName: expandedVehicle.makeName,
+    modelId: expandedVehicle.modelId,
+    modelName: expandedVehicle.modelName,
+    engineId: expandedVehicle.engineId,
+    engineName: expandedVehicle.engineName,
+  } : null;
+
+  const handleVehicleExpand = (vehicle: VehicleExpansion) => {
+    setExpandedVehicle(vehicle);
   };
 
   const { data: categoriesData } = useQuery(() => categoryApi.getAll());
@@ -138,6 +185,8 @@ export default function App() {
         onSearchChange={setSearchQuery}
         onVehicleSearch={handleVehicleSearch}
         onPartSearch={handlePartSearch}
+        onCategorySearch={handleCategorySearch}
+        vehicleContext={vehicleContext}
       />
 
       <div className="flex-1 flex flex-row overflow-hidden">
@@ -146,6 +195,7 @@ export default function App() {
           <TreeSidebar
             ref={treeSidebarRef}
             onPartTypeSelect={handlePartTypeSelect}
+            onVehicleExpand={handleVehicleExpand}
             renderPartsInline={() => (
               <div className="border-t border-border pt-4">
                 {breadcrumb && (

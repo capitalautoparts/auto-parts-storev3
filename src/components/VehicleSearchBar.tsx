@@ -1,20 +1,24 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, Car, Package, X } from "lucide-react";
+import { Search, Car, Package, X, Wrench } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { vehicleApi, type VehicleSearchResult } from "@/lib/api";
+import { vehicleApi, type VehicleSearchResult, type VehicleContext } from "@/lib/api";
 
 interface VehicleSearchBarProps {
   onVehicleSelect: (result: VehicleSearchResult) => void;
   onPartSelect?: (result: VehicleSearchResult) => void;
+  onCategorySelect?: (result: VehicleSearchResult) => void;
   onTextSearch?: (query: string) => void;
+  vehicleContext?: VehicleContext | null;
   className?: string;
 }
 
 export function VehicleSearchBar({
   onVehicleSelect,
   onPartSelect,
+  onCategorySelect,
   onTextSearch,
+  vehicleContext,
   className,
 }: VehicleSearchBarProps) {
   const [query, setQuery] = useState("");
@@ -45,7 +49,16 @@ export function VehicleSearchBar({
 
       setIsLoading(true);
       try {
-        const searchResults = await vehicleApi.search(query);
+        let searchResults: VehicleSearchResult[];
+
+        if (vehicleContext) {
+          // If we have a vehicle selected, search for categories/part types
+          searchResults = await vehicleApi.searchCategories(query, vehicleContext);
+        } else {
+          // Otherwise, search for vehicles
+          searchResults = await vehicleApi.search(query);
+        }
+
         setResults(searchResults);
         setIsOpen(searchResults.length > 0);
         setHighlightedIndex(-1);
@@ -58,15 +71,17 @@ export function VehicleSearchBar({
     }, 200);
 
     return () => clearTimeout(searchTimeout);
-  }, [query]);
+  }, [query, vehicleContext]);
 
   const handleSelect = (result: VehicleSearchResult) => {
     if (result.type === "vehicle") {
       onVehicleSelect(result);
     } else if (result.type === "part" && onPartSelect) {
       onPartSelect(result);
+    } else if (result.type === "category" && onCategorySelect) {
+      onCategorySelect(result);
     }
-    setQuery(result.label);
+    setQuery("");
     setIsOpen(false);
   };
 
@@ -119,7 +134,11 @@ export function VehicleSearchBar({
           ref={inputRef}
           type="text"
           value={query}
-          placeholder="Search by vehicle (2010 Hyundai Elantra) or part number..."
+          placeholder={
+            vehicleContext
+              ? `Search parts for ${vehicleContext.year} ${vehicleContext.makeName} ${vehicleContext.modelName}...`
+              : "Search by vehicle (2010 Hyundai Elantra) or part number..."
+          }
           className="pl-10 pr-8 bg-white text-brand-ink border-0 shadow-sm"
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -150,6 +169,8 @@ export function VehicleSearchBar({
               >
                 {result.type === "vehicle" ? (
                   <Car className="h-4 w-4 text-gray-500 flex-shrink-0" />
+                ) : result.type === "category" ? (
+                  <Wrench className="h-4 w-4 text-gray-500 flex-shrink-0" />
                 ) : (
                   <Package className="h-4 w-4 text-gray-500 flex-shrink-0" />
                 )}
@@ -165,6 +186,11 @@ export function VehicleSearchBar({
                   {result.type === "part" && (
                     <div className="text-xs text-gray-500">
                       Part number search
+                    </div>
+                  )}
+                  {result.type === "category" && (
+                    <div className="text-xs text-gray-500">
+                      Part category
                     </div>
                   )}
                 </div>

@@ -2,7 +2,7 @@ import { ShoppingCart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { VehicleSearchBar } from "@/components/VehicleSearchBar";
-import type { VehicleSearchResult } from "@/lib/api";
+import type { VehicleSearchResult, VehicleContext } from "@/lib/api";
 
 interface HeaderProps {
   cartItemCount: number;
@@ -10,13 +10,17 @@ interface HeaderProps {
   onSearchChange?: (query: string) => void;
   onVehicleSearch?: (result: VehicleSearchResult) => void;
   onPartSearch?: (result: VehicleSearchResult) => void;
+  onCategorySearch?: (result: VehicleSearchResult) => void;
+  vehicleContext?: VehicleContext | null;
 }
 
 export function Header({
   cartItemCount,
   onVehicleSearch,
   onPartSearch,
+  onCategorySearch,
   onSearchChange,
+  vehicleContext,
 }: HeaderProps) {
   return (
     <header className="bg-brand-navy text-brand-cream shadow-lg animate-rise">
@@ -69,7 +73,9 @@ export function Header({
             <VehicleSearchBar
               onVehicleSelect={onVehicleSearch || (() => {})}
               onPartSelect={onPartSearch}
+              onCategorySelect={onCategorySearch}
               onTextSearch={onSearchChange}
+              vehicleContext={vehicleContext}
               className="w-full"
             />
           </div>

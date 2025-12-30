@@ -122,7 +122,7 @@ const hydrateCart = (cart: Cart): Cart => ({
 });
 
 export interface VehicleSearchResult {
-  type: 'vehicle' | 'part';
+  type: 'vehicle' | 'part' | 'category';
   label: string;
   year?: number;
   makeId?: number;
@@ -133,9 +133,62 @@ export interface VehicleSearchResult {
   engineName?: string;
   partNumber?: string;
   partId?: number;
+  categoryId?: number;
+  categoryName?: string;
+}
+
+export interface VehicleContext {
+  year: number;
+  makeId: number;
+  makeName: string;
+  modelId: number;
+  modelName: string;
+  engineId?: number;
+  engineName?: string;
 }
 
 export const vehicleApi = {
+  // Search for categories/part types within a selected vehicle
+  searchCategories: async (query: string, context?: VehicleContext): Promise<VehicleSearchResult[]> => {
+    if (USE_MOCKS) {
+      const q = query.toLowerCase().trim();
+      if (!q) return mockResponse([]);
+
+      const results: VehicleSearchResult[] = [];
+
+      // Search categories by name
+      for (const cat of categories) {
+        const catLower = cat.name.toLowerCase();
+        if (catLower.includes(q)) {
+          // Find parent category name if exists
+          const parent = cat.parentId ? categories.find(c => c.id === cat.parentId) : null;
+          const label = parent ? `${parent.name} > ${cat.name}` : cat.name;
+
+          results.push({
+            type: 'category',
+            label,
+            categoryId: cat.id,
+            categoryName: cat.name,
+            // Include vehicle context if provided
+            ...(context && {
+              year: context.year,
+              makeId: context.makeId,
+              makeName: context.makeName,
+              modelId: context.modelId,
+              modelName: context.modelName,
+              engineId: context.engineId,
+              engineName: context.engineName,
+            }),
+          });
+        }
+      }
+
+      return mockResponse(results.slice(0, 10));
+    }
+    const { data } = await apiClient.get("/categories/search", { params: { q: query } });
+    return data;
+  },
+
   search: async (query: string): Promise<VehicleSearchResult[]> => {
     if (USE_MOCKS) {
       const q = query.toLowerCase().trim();
