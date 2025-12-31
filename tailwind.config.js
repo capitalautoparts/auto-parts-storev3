@@ -9,6 +9,7 @@ export default {
       colors: {
         brand: {
           navy: "var(--brand-navy)",
+          charcoal: "var(--brand-charcoal)",
           ink: "var(--brand-ink)",
           cream: "var(--brand-cream)",
           gold: "var(--brand-gold)",

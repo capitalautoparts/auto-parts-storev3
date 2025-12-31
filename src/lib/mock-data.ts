@@ -110,6 +110,32 @@ export const partCatalog: PartRecord[] = [
     position: "Rear",
     categoryId: 101,
     engineId: 1001,
+    imageUrl: "https://via.placeholder.com/250x250?text=Brake+Pads",
+    specs: {
+      "Material": "Ceramic",
+      "Position": "Rear",
+      "Hardware Included": "Yes",
+      "Noise Level": "Low",
+      "Dust Level": "Low",
+      "Pad Width": "4.5 in",
+      "Pad Height": "2.1 in",
+      "Pad Thickness": "0.5 in",
+    },
+    interchanges: [
+      { partNumber: "ZD813", brand: "Wagner", notes: "Direct replacement" },
+      { partNumber: "BC1156", brand: "Bosch", notes: "OEM equivalent" },
+      { partNumber: "14D1337CH", brand: "ACDelco" },
+    ],
+    fitments: [
+      { year: 2009, make: "Hyundai", model: "Elantra", engine: "2.0L L4" },
+      { year: 2010, make: "Hyundai", model: "Elantra", engine: "2.0L L4" },
+      { year: 2011, make: "Hyundai", model: "Elantra", engine: "2.0L L4" },
+      { year: 2009, make: "Hyundai", model: "Elantra", engine: "1.8L L4" },
+    ],
+    assets: [
+      { type: "pdf", title: "Installation Guide", url: "#" },
+      { type: "pdf", title: "Safety Data Sheet", url: "#" },
+    ],
   },
   {
     id: 5002,
@@ -123,6 +149,7 @@ export const partCatalog: PartRecord[] = [
     position: "Rear",
     categoryId: 101,
     engineId: 1001,
+    imageUrl: "https://via.placeholder.com/250x250?text=Wagner+Pads",
   },
   {
     id: 5003,
@@ -136,6 +163,7 @@ export const partCatalog: PartRecord[] = [
     position: "Front",
     categoryId: 102,
     engineId: 1001,
+    imageUrl: "https://via.placeholder.com/250x250?text=Brake+Kit",
   },
   {
     id: 5004,
@@ -149,6 +177,7 @@ export const partCatalog: PartRecord[] = [
     position: "Rear",
     categoryId: 102,
     engineId: 1001,
+    imageUrl: "https://via.placeholder.com/250x250?text=Brake+Rotor",
   },
   {
     id: 5005,
@@ -162,6 +191,7 @@ export const partCatalog: PartRecord[] = [
     position: "Front",
     categoryId: 103,
     engineId: 1001,
+    imageUrl: "https://via.placeholder.com/250x250?text=Wheel+Hub",
   },
   {
     id: 5006,
@@ -175,6 +205,7 @@ export const partCatalog: PartRecord[] = [
     position: "Left",
     categoryId: 201,
     engineId: 1001,
+    imageUrl: "https://via.placeholder.com/250x250?text=Headlamp",
   },
   {
     id: 5007,
@@ -187,6 +218,7 @@ export const partCatalog: PartRecord[] = [
     stock: 32,
     categoryId: 301,
     engineId: 1001,
+    imageUrl: "https://via.placeholder.com/250x250?text=Oil+Filter",
   },
   {
     id: 5008,

@@ -49,6 +49,26 @@ export interface Category {
   parentId: number | null;
 }
 
+export interface PartInterchange {
+  partNumber: string;
+  brand: string;
+  notes?: string;
+}
+
+export interface PartFitment {
+  year: number;
+  make: string;
+  model: string;
+  engine?: string;
+  notes?: string;
+}
+
+export interface PartAsset {
+  type: 'pdf' | 'image' | 'video';
+  title: string;
+  url: string;
+}
+
 export interface Part {
   id: number;
   brand: string;
@@ -59,6 +79,11 @@ export interface Part {
   warranty: string;
   stock: number;
   position?: string;
+  imageUrl?: string;
+  specs?: Record<string, string>;
+  interchanges?: PartInterchange[];
+  fitments?: PartFitment[];
+  assets?: PartAsset[];
 }
 
 export interface CartItem {

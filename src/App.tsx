@@ -3,10 +3,16 @@ import { Header } from "@/components/Header";
 import { PartsTable } from "@/components/PartsTable";
 import { RightCartPanel } from "@/components/RightCartPanel";
 import { TreeSidebar, type PartSelection, type TreeSidebarHandle, type VehicleExpansion } from "@/components/TreeSidebar";
+import { OrderConfirmationPage } from "@/pages/OrderConfirmationPage";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { toast, Toaster } from "sonner";
-import { Loader2 } from "lucide-react";
-import { partsApi, cartApi, categoryApi, type VehicleSearchResult, type VehicleContext } from "@/lib/api";
+import { Loader2, ShoppingCart } from "lucide-react";
+import { partsApi, cartApi, categoryApi, type VehicleSearchResult, type VehicleContext, type Part } from "@/lib/api";
 import { useQuery, useMutation } from "@/lib/hooks";
+
+type AppView = "catalog" | "confirmation";
 
 export default function App() {
   const [selectedEngineId, setSelectedEngineId] = useState<number>();
@@ -15,6 +21,9 @@ export default function App() {
   const [expandedVehicle, setExpandedVehicle] = useState<VehicleExpansion | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [currentView, setCurrentView] = useState<AppView>("catalog");
+  const [completedOrderId, setCompletedOrderId] = useState<string>("");
   const treeSidebarRef = useRef<TreeSidebarHandle>(null);
 
   const handleVehicleSearch = (result: VehicleSearchResult) => {
@@ -164,6 +173,10 @@ export default function App() {
     addToCartMutation.mutate({ partId, quantity: 1 });
   };
 
+  const handleAddPartToCart = (part: Part) => {
+    handleAddToCart(part.id);
+  };
+
   const handleUpdateQuantity = (itemId: number, quantity: number) => {
     updateQuantityMutation.mutate({ itemId, quantity });
   };
@@ -173,9 +186,33 @@ export default function App() {
   };
 
   const handleCheckout = () => {
-    toast.info("Checkout functionality coming soon!");
+    // Generate order ID and show confirmation
+    const orderId = `CAP-${Date.now().toString(36).toUpperCase()}`;
+    setCompletedOrderId(orderId);
+    setMobileCartOpen(false);
+    setCurrentView("confirmation");
+    toast.success("Order placed successfully!");
   };
 
+  const handleContinueShopping = () => {
+    setCurrentView("catalog");
+    setCompletedOrderId("");
+  };
+
+  // Render confirmation page after order
+  if (currentView === "confirmation") {
+    return (
+      <>
+        <Toaster />
+        <OrderConfirmationPage
+          orderId={completedOrderId}
+          onContinueShopping={handleContinueShopping}
+        />
+      </>
+    );
+  }
+
+  // Default: catalog view
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Toaster />
@@ -187,6 +224,7 @@ export default function App() {
         onPartSearch={handlePartSearch}
         onCategorySearch={handleCategorySearch}
         vehicleContext={vehicleContext}
+        onAddToCart={handleAddPartToCart}
       />
 
       <div className="flex-1 flex flex-row overflow-hidden">
@@ -234,13 +272,39 @@ export default function App() {
           />
         </div>
 
-        {/* Cart Sidebar - only true sidebar */}
-        <RightCartPanel
-          items={cartData?.items || []}
-          onUpdateQuantity={handleUpdateQuantity}
-          onRemoveItem={handleRemoveItem}
-          onCheckout={handleCheckout}
-        />
+        {/* Cart Sidebar - hidden on mobile */}
+        <div className="hidden lg:block">
+          <RightCartPanel
+            items={cartData?.items || []}
+            onUpdateQuantity={handleUpdateQuantity}
+            onRemoveItem={handleRemoveItem}
+            onCheckout={handleCheckout}
+          />
+        </div>
+      </div>
+
+      {/* Mobile Cart Button - fixed at bottom right */}
+      <div className="lg:hidden fixed bottom-4 right-4 z-50">
+        <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
+          <SheetTrigger asChild>
+            <Button className="rounded-full h-14 w-14 bg-brand-navy shadow-lg hover:bg-brand-navy/90 relative">
+              <ShoppingCart className="h-6 w-6" />
+              {(cartData?.items?.length || 0) > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-brand-gold text-brand-ink">
+                  {cartData?.items?.length}
+                </Badge>
+              )}
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="w-full sm:max-w-md p-0">
+            <RightCartPanel
+              items={cartData?.items || []}
+              onUpdateQuantity={handleUpdateQuantity}
+              onRemoveItem={handleRemoveItem}
+              onCheckout={handleCheckout}
+            />
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );

@@ -9,6 +9,7 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --color-brand-navy: var(--brand-navy);
+  --color-brand-charcoal: var(--brand-charcoal);
   --color-brand-ink: var(--brand-ink);
   --color-brand-cream: var(--brand-cream);
   --color-brand-gold: var(--brand-gold);
@@ -51,6 +52,7 @@
   --font-sans: "IBM Plex Sans", sans-serif;
   --font-display: "Barlow Condensed", sans-serif;
   --brand-navy: #c40c0c;
+  --brand-charcoal: #2d3436;
   --brand-ink: #1f1f1f;
   --brand-cream: #ffffff;
   --brand-gold: #f2f2f2;
