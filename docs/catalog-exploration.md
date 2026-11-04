@@ -64,17 +64,28 @@ claiming main is a working ERP-connected test catalog.
 
 ## Current validation
 
-TypeScript, production build and eight contract tests passed on VM511. The final
-integrated Firefox check passed five scenarios with 19 real ERP API requests and
+TypeScript, production build and ten contract tests passed on VM511. The final
+integrated Firefox check passed six scenarios with 19 real ERP API requests and
 zero browser exceptions: original tree/inline listings, application dialog and
 persisted Quick Cart, exact part search and stock filter, two model years sharing
-reference IDs without cross-selection, and mobile tree/table/cart. It also
+reference IDs without cross-selection, mobile tree/table/cart, and disabled account access. It also
 asserts cleared stale search text, disabled checkout/no card fields, compact
 mobile rows, no document overflow and an opaque cart sheet.
 
 The original header and Quick Cart stay in view while the catalog scrolls. The
 original CSS file is unchanged; targeted sizing/background corrections make the
 existing components usable with the full catalog and mobile dialog overlays.
+The specific layout differences Brian should review are:
+
+- App.tsx adds a small Canada/CAD, staging and checkout-disabled banner.
+- Its h-dvh shell keeps the original header and desktop Quick Cart visible;
+  the central catalog scrolls within the viewport.
+- PartsTable retains its columns with a 900px minimum width and a local
+  horizontal scroller on mobile; details have a minimum width and the first
+  application note is clamped to two lines, with all notes in Details.
+- The existing mobile cart sheet has an opaque white background; product images
+  and the existing detail dialog fit small screens.
+
 Screenshots reviewed at 1440×1000 and 390×844:
 
 - [Original design with ERP parts](evidence/d1492/desktop.png)
@@ -82,10 +93,30 @@ Screenshots reviewed at 1440×1000 and 390×844:
 - [Mobile parts table](evidence/d1492/mobile-parts.png)
 - [Mobile Quick Cart](evidence/d1492/mobile-cart.png)
 
-Local evidence: /srv/dev/reports/roysauto-d1492-correction/verified/.
+Local evidence: /srv/dev/reports/roysauto-d1492-correction/review-verified/.
 Source fitment spot-check: BRX2076 returned by the selected 2.5L Camry query has
 both 2.5L and 3.5L applications in ERP. All conditions are retained in Details;
 showing a result does not convert every application into an unconditional fit.
+
+## Review corrections after 8d86a64
+
+Both the table and detail dialog use ERP availability status. Only an explicit
+out_of_stock result says Out of Stock. Unconfirmed status stays unconfirmed even
+if a quantity or ERP default lead time is present. Available/special-order and
+backorder statuses retain their meaning; positive lead times are labelled as
+estimates, not delivery guarantees. Low stock remains distinct from in stock.
+
+Removed unused mock-data.ts, CheckoutPage, OrderConfirmationPage and the three
+components/checkout files. No remaining source imports them. AuthContext and
+AuthModal do not import api.ts or call fetch/axios; their interfaces still type
+check. The mounted AuthProvider is disabled and Header prevents opening the
+modal. The browser check exercises Account without creating a mock user or
+opening a password form. RightCartPanel always receives catalogPreview=true,
+which excludes its legacy shipping/payment fields and disables checkout.
+
+Cart additions now normalize quantities before both new-line and existing-line
+updates, and reject non-finite inputs. The duplicate price-formatting ternary is
+removed. Availability and cart regression contracts cover these review findings.
 
 ## Future work
 

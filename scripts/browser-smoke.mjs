@@ -20,6 +20,7 @@ preview.stderr.on('data', chunk => { previewLog += chunk; });
 let browser;
 let activePage;
 const report = { cases: [], apiRequests: 0, pageErrors: [], screenshots: [] };
+const accountRequests = [];
 try {
   for (let attempt = 0; attempt < 30; attempt++) {
     try { if ((await fetch(origin)).ok) break; } catch { /* bounded server startup */ }
@@ -32,7 +33,10 @@ try {
   activePage = page;
   page.setDefaultTimeout(45_000);
   page.on('pageerror', error => report.pageErrors.push(error.message));
-  page.on('request', request => { if (request.url().includes('/api/catalog?')) report.apiRequests++; });
+  page.on('request', request => {
+    if (request.url().includes('/api/catalog?')) report.apiRequests++;
+    if (/\/api\/(auth|checkout|orders)(?:\/|\?|$)/.test(request.url())) accountRequests.push(request.url());
+  });
   const screenshot = async name => {
     await page.screenshot({ path: `${output}/${name}.png` });
     report.screenshots.push(`${name}.png`);
@@ -46,6 +50,11 @@ try {
   await page.goto(origin);
   await page.getByRole('heading', { name: 'Capital Auto Parts', exact: true }).waitFor();
   await page.getByTestId('vehicle-tree').getByRole('button', { name: '2020', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Account', exact: true }).filter({ visible: true }).click();
+  await page.getByText('Accounts are not enabled during catalog testing.', { exact: true }).waitFor();
+  assert.equal(await page.locator('input[type="password"]').count(), 0);
+  assert.equal(await page.evaluate(() => localStorage.getItem('cap-auth-user')), null);
+  report.cases.push('Account action stays disabled; no login form, API call or mock user is created');
   await screenshot('desktop-original-home');
   for (const label of ['2020', 'Toyota', 'Camry', '2.5L 4-Cyl L', 'Brakes', 'Brake Pad']) await clickTree(label);
   await waitParts();
@@ -55,7 +64,9 @@ try {
   await screenshot('desktop-original-parts');
   report.cases.push('Original tree → year → make → model → engine → category → inline real ERP parts');
   const row = page.locator('[data-part-id="DVNJ_ALD1212M"]');
+  const rowAvailability = await row.getByTestId('part-availability').textContent();
   await row.getByRole('button', { name: 'Details', exact: true }).click();
+  assert.ok((await page.getByRole('dialog').getByTestId('part-availability').textContent()).startsWith(rowAvailability));
   await page.getByRole('tab', { name: 'Fitments', exact: true }).click();
   assert.match(await page.getByRole('dialog').textContent(), /Application notes/);
   await screenshot('desktop-original-details');
@@ -106,6 +117,7 @@ try {
   await page.keyboard.press('Escape');
   report.cases.push('Original mobile tree, internally scrolling parts table and Quick Cart sheet');
   assert.deepEqual(report.pageErrors, []);
+  assert.deepEqual(accountRequests, [], 'Catalog testing must not call account, checkout or order endpoints');
   console.log(JSON.stringify(report, null, 2));
 } catch (error) {
   report.failure = error.message;

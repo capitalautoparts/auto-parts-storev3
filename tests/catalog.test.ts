@@ -5,7 +5,8 @@ import { once } from 'node:events';
 import { createCatalogHandler, previewEnabled, upstreamUrl } from '../server/catalog-proxy.ts';
 import { changeQuery, priceLabel, readCart, searchParams } from '../src/features/catalog/model.ts';
 import type { Part } from '../src/features/catalog/model.ts';
-import { mapErpPart, decodeCart, vehicleApi } from '../src/lib/erp-api.ts';
+import { mapErpPart, decodeCart, vehicleApi, cartApi } from '../src/lib/erp-api.ts';
+import { availabilitySummary } from '../src/lib/availability.ts';
 
 test('upstream is fixed, bounded, read-only and explicitly independent of Shopify sellability', () => {
   const url = upstreamUrl('/api/catalog?resource=search&q=ALD1212M');
@@ -93,6 +94,49 @@ test('engine requests carry the exact year, make and model through the original 
     assert.equal(engine.searchParams.get('model'), 'Camry');
     await assert.rejects(vehicleApi.getEngines(1011, 2020, 99));
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test('stock labels respect ERP status, including unknown counts and non-stock lead times', () => {
+  const raw = { sku: 'BRAND_PAD', name: 'Pad', brand_name: 'Brand', part_number: 'PAD' } as Part;
+  const cases = [
+    ['in_stock', null, 0, 'In Stock'],
+    ['low_stock', 2, 3, 'Low Stock'],
+    ['out_of_stock', 0, 3, 'Out of Stock'],
+    ['out_of_stock', 20, 3, 'Out of Stock'],
+    ['available', null, 3, 'Special order · estimated lead time 3 days'],
+    ['special_order', 0, 1, 'Special order · estimated lead time 1 day'],
+    ['special_order', 0, -1, 'Special order'],
+    ['backorder', null, 5, 'Backorder · estimated lead time 5 days'],
+    ['unknown', 0, 3, 'Availability unconfirmed'],
+    ['unknown', 20, 3, 'Availability unconfirmed'],
+    ['future_status', 20, 3, 'Availability unconfirmed'],
+  ] as const;
+  for (const [status, quantity, lead_time_days, label] of cases) {
+    const part = mapErpPart({ ...raw, availability: { status, quantity, lead_time_days } });
+    assert.equal(availabilitySummary(part).label, label);
+  }
+  assert.equal(availabilitySummary(mapErpPart(raw)).label, 'Availability unconfirmed');
+});
+
+test('adding to an existing cart cannot persist negative, fractional or non-finite quantities', async () => {
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const memory = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: (key: string) => memory.get(key) ?? null,
+    setItem: (key: string, value: string) => memory.set(key, value),
+  } });
+  const part = mapErpPart({ sku: 'BRAND_PAD', name: 'Pad', brand_name: 'Brand', part_number: 'PAD' } as Part);
+  try {
+    assert.equal((await cartApi.addItem('test', part.id, -5, part)).items[0].quantity, 1);
+    assert.equal((await cartApi.addItem('test', part.id, -5, part)).items[0].quantity, 2);
+    assert.equal((await cartApi.addItem('test', part.id, 2.8, part)).items[0].quantity, 4);
+    for (const invalid of [NaN, Infinity, -Infinity]) await assert.rejects(cartApi.addItem('test', part.id, invalid, part));
+    assert.equal((await cartApi.get('test')).items[0].quantity, 4);
+    assert.equal((await cartApi.addItem('test', part.id, 1000, part)).items[0].quantity, 99);
+  } finally {
+    if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  }
 });
 
 test('HTTP boundary blocks writes, preserves Cloudflare reference, never forwards caller credentials', async () => {

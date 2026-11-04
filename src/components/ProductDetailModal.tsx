@@ -13,6 +13,7 @@ import { WishlistButton } from "./wishlist/WishlistButton";
 import { ShoppingCart, Check, FileText, ExternalLink, Package, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Part } from "@/lib/api";
+import { availabilitySummary } from "@/lib/availability";
 
 interface ProductDetailModalProps {
   part: Part | null;
@@ -53,7 +54,7 @@ export function ProductDetailModal({
   if (!part) return null;
 
   const tier = (part.tier ? tierConfig[part.tier] : { label: "—", bgColor: "bg-secondary", textColor: "text-muted-foreground" });
-  const isInStock = part.stock > 0;
+  const availability = availabilitySummary(part);
 
   const handleAddToCart = () => {
     onAddToCart(part.id);
@@ -107,16 +108,12 @@ export function ProductDetailModal({
               {/* Stock and warranty */}
               <div className="space-y-1 text-sm">
                 <div className="flex items-center gap-2">
-                  {isInStock ? (
-                    <>
-                      <Check className="h-4 w-4 text-emerald-600" />
-                      <span className="text-emerald-600 font-medium">
-                        In Stock ({part.stock} available)
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-rose-600 font-medium">Out of Stock</span>
-                  )}
+                  {availability.confirmedStock && <Check className="h-4 w-4 text-emerald-600" />}
+                  <span data-testid="part-availability" className={cn("font-medium",
+                    availability.tone === 'positive' ? "text-emerald-600" : availability.tone === 'negative' ? "text-rose-600" : "text-muted-foreground") }>
+                    {availability.label}
+                    {availability.confirmedStock && Number.isFinite(part.stock) && part.stock > 0 ? ` (${part.stock} available)` : ''}
+                  </span>
                 </div>
                 {part.warranty && (
                   <div className="text-muted-foreground">

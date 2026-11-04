@@ -60,6 +60,7 @@ export interface Part {
   coreCharge?: number | null;
   packQuantity?: number;
   availability?: string;
+  leadTimeDays?: number;
   applicationNotes?: string[];
   stock: number;
   position?: string;

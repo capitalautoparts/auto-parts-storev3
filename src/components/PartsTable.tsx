@@ -7,6 +7,7 @@ import { ProductImage } from "@/components/ProductImage";
 import { ProductDetailModal } from "@/components/ProductDetailModal";
 import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import type { Part } from "@/lib/api";
+import { availabilitySummary } from "@/lib/availability";
 
 interface PartsTableProps {
   parts: Part[];
@@ -81,8 +82,8 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
               <tbody>
                 {groupedParts[position].map((part, index) => {
                   const tier = (part.tier ? tierConfig[part.tier] : { label: "—", bgColor: "bg-secondary", textColor: "text-muted-foreground" });
-                  const isInStock = part.stock > 0;
-                  const formattedPrice = part.price === null ? "Price unavailable" : `${part.price === null ? "Price unavailable" : `$${part.price.toFixed(2)}`}`;
+                  const availability = availabilitySummary(part);
+                  const formattedPrice = part.price === null ? "Price unavailable" : `$${part.price.toFixed(2)}`;
                   const isEvenRow = index % 2 === 0;
 
                   return (
@@ -136,14 +137,11 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                           {part.warranty && <span>Warranty: {part.warranty}</span>}
                           {part.position && <span>Position: {part.position}</span>}
-                          {isInStock ? (
-                            <span className="flex items-center gap-1 text-emerald-700">
-                              <Check className="h-3 w-3" />
-                              In Stock
-                            </span>
-                          ) : (
-                            <span className="text-rose-700">Out of Stock</span>
-                          )}
+                          <span data-testid="part-availability" className={cn("flex items-center gap-1",
+                            availability.tone === 'positive' ? "text-emerald-700" : availability.tone === 'negative' ? "text-rose-700" : "text-muted-foreground") }>
+                            {availability.confirmedStock && <Check className="h-3 w-3" />}
+                            {availability.label}
+                          </span>
                         </div>
                       </td>
 

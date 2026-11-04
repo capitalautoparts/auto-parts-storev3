@@ -16,7 +16,7 @@ export interface Part {
   sku: string; slug?: string; part_number: string; name: string; brand_name: string;
   pricing?: { price: number | null; currency: string } | null;
   core_charge?: number | { amount?: number } | null;
-  availability?: { status: string; quantity: number; lead_time_days?: number } | null;
+  availability?: { status: string; quantity: number | null; lead_time_days?: number } | null;
   sellablePackQuantity?: number; image_url?: string | null;
   fitment_summary?: string; applications?: Application[];
   fitment_qualifiers?: { name: string; value: string }[];

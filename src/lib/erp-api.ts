@@ -87,6 +87,7 @@ export function mapErpPart(raw: ErpPart, vehicle?: VehicleContext | null): Part 
     id: raw.sku, brand: raw.brand_name, partNumber: raw.part_number, description: raw.name,
     price: validPrice ? price : null, currency: 'CAD', warranty: '', stock: raw.availability?.quantity ?? 0,
     availability: raw.availability?.status ?? 'unconfirmed', imageUrl: raw.image_url ?? undefined,
+    leadTimeDays: raw.availability?.lead_time_days,
     position: raw.fitment_qualifiers?.find(item => item.name.toLowerCase() === 'position')?.value,
     specs: Object.fromEntries((raw.fitment_qualifiers ?? []).map(item => [item.name, item.value])),
     coreCharge: typeof core === 'number' && Number.isFinite(core) ? core : null,
@@ -136,13 +137,15 @@ function writeCart(cart: Cart) {
 export const cartApi = {
   async get(sessionId: string) { return storedCart(sessionId); },
   async addItem(sessionId: string, partId: string | number, quantity: number, snapshot?: Part) {
+    if (!Number.isFinite(quantity)) throw new Error('Quantity must be a finite number.');
+    const amount = Math.max(1, Math.min(99, Math.floor(quantity)));
     const cart = storedCart(sessionId), part = snapshot ?? knownParts.get(partId);
     if (!part || typeof partId !== 'string' || part.id !== partId) throw new Error('Reload this part before adding it.');
     const existing = cart.items.find(item => item.partId === partId);
-    if (existing) existing.quantity = Math.min(99, existing.quantity + quantity);
+    if (existing) existing.quantity = Math.min(99, existing.quantity + amount);
     else {
       if (cart.items.length >= 100) throw new Error('The test cart has reached 100 different parts.');
-      cart.items.push({ id: partId, partId, quantity: Math.max(1, Math.min(99, Math.floor(quantity))), part });
+      cart.items.push({ id: partId, partId, quantity: amount, part });
     }
     return writeCart(cart);
   },
