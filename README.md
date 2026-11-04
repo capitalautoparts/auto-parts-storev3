@@ -43,14 +43,17 @@ placeholders; they are not claimed as implemented integrations.
 Existing project: brian-barbers-projects/auto-parts-storev3.
 Main alias: https://auto-parts-storev3.vercel.app.
 Protected task preview:
-https://auto-parts-storev3-git-feat-roysa-b611e6-brian-barbers-projects.vercel.app.
+https://auto-parts-storev3-git-fix-roysau-0e57df-brian-barbers-projects.vercel.app.
 
 Anonymous root and API requests to the task preview redirect to Vercel SSO.
 Agents have no authorized Vercel account access. Brian must confirm Preview
 Authentication in Settings → Deployment Protection (attach screenshot), then
 add ROYS_CATALOG_PREVIEW_ENABLED=true in Settings → Environment Variables,
-scoped to Preview and branch feat/roysauto-d1492-catalog only, and redeploy.
-The request is already on D1492; do not duplicate it or create credentials.
+scoped to Preview and branch fix/roysauto-d1492-staging-acceptance only if absent,
+and redeploy that branch. The earlier D1492 request named the original
+feat/roysauto-d1492-catalog branch; that scope does not enable this follow-up.
+Check the current D1492 owner-action note before repeating a request. Do not
+create credentials or enable the flag for all branches or Production.
 
 The adapter requires VERCEL=1, VERCEL_ENV=preview and that flag. It stays disabled
 on Vercel Production, including main's public test alias. A main merge alone
@@ -71,3 +74,10 @@ turning the search API's default lead time into an ETA. Browser acceptance reads
 the current ERP price when checking the saved cart, and exercises multiple makes
 with complete vehicle context. No direct database credentials are required:
 vehicles, parts and CAD prices are read through the existing ERP staging API.
+
+The TypeScript configuration rewrites relative `.ts` imports to `.js` for Vercel's
+emitted Node function. `npm test` includes an isolated emitted-entrypoint test;
+source-only Vite tests cannot establish that the packaged function starts.
+For manual VM511 browser acceptance, `ROYS_SMOKE_FUNCTION_ENTRYPOINT` can point
+to the packaged `api/catalog.js`; the smoke then serves built assets with that
+function and requires the normal Preview activation variables.

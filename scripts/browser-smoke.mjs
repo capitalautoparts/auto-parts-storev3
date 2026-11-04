@@ -1,9 +1,11 @@
 // Manual integrated check: run on VM511 after npm run build. No API interception.
+// ROYS_SMOKE_FUNCTION_ENTRYPOINT selects packaged JS instead of Vite's source adapter.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
+import { pathToFileURL } from 'node:url';
 import { firefox } from '@playwright/test';
 
 const output = process.env.ROYS_SMOKE_OUTPUT || '/tmp/roysauto-browser-smoke';
@@ -13,13 +15,34 @@ await once(reservation, 'listening');
 const port = reservation.address().port;
 await new Promise(resolve => reservation.close(resolve));
 const origin = `http://127.0.0.1:${port}`;
-const preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
 let previewLog = '';
-preview.stdout.on('data', chunk => { previewLog += chunk; });
-preview.stderr.on('data', chunk => { previewLog += chunk; });
+let closePreview;
+if (process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT) {
+  const { default: handler } = await import(pathToFileURL(process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT).href);
+  const { preview } = await import('vite');
+  const server = await preview({
+    configFile: false,
+    preview: { host: '127.0.0.1', port, strictPort: true },
+    plugins: [{
+      name: 'packaged-catalog-smoke',
+      configurePreviewServer(vite) {
+        vite.middlewares.use((req, res, next) => {
+          if (new URL(req.url ?? '/', origin).pathname === '/api/catalog') void handler(req, res);
+          else next();
+        });
+      },
+    }],
+  });
+  closePreview = () => new Promise(resolve => server.httpServer.close(resolve));
+} else {
+  const preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  preview.stdout.on('data', chunk => { previewLog += chunk; });
+  preview.stderr.on('data', chunk => { previewLog += chunk; });
+  closePreview = () => preview.kill('SIGTERM');
+}
 let browser;
 let activePage;
-const report = { cases: [], apiRequests: 0, apiResponses: [], searchUrls: [], vehicleContexts: [], pageErrors: [], screenshots: [] };
+const report = { functionMode: process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT ? 'packaged-js' : 'vite-source', cases: [], apiRequests: 0, apiResponses: [], searchUrls: [], vehicleContexts: [], pageErrors: [], screenshots: [] };
 const accountRequests = [];
 const apiPayloads = new Map();
 const apiWaiters = [];
@@ -318,7 +341,7 @@ try {
 } finally {
   for (const waiter of apiWaiters) clearTimeout(waiter.timer);
   await browser?.close();
-  preview.kill('SIGTERM');
+  await closePreview();
   await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2));
   console.log(`SMOKE_OUTPUT=${output}`);
 }

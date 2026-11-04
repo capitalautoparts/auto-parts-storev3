@@ -178,3 +178,79 @@ Local evidence: /srv/dev/reports/roysauto-d1492-acceptance/. A browser-only
 invocation moved to a fresh runner lane without built assets; the missing dist
 was confirmed, then build plus browser smoke in one job passed. No ERP 403 was
 observed. Hosted Vercel acceptance is still unverified behind sign-in.
+
+## Packaged function failure and repair — 2026-11-04
+
+Brian's follow-up preview displayed `Unexpected token 'A'` instead of vehicle
+years. This is a plain-text platform response being parsed as JSON. The proxy's
+own error paths return JSON, so source-only Vite acceptance was insufficient.
+
+The failure was reproduced on VM511 using pinned `@vercel/node@29.0.1`,
+`@vercel/build-utils@15.2.1`, repository TypeScript 5.9.3 and Node 22.23.1:
+
+- Original config: the packaged `api/catalog.js` retained its import of
+  `../server/catalog-proxy.ts`, but the package contained only
+  `server/catalog-proxy.js`. Loading it failed with `ERR_MODULE_NOT_FOUND`.
+- With `rewriteRelativeImportExtensions: true`: the import becomes `.js`, the
+  packaged function loads and returns the expected JSON 503 with activation
+  unset, without calling ERP.
+
+This demonstrates a concrete packaging defect and repair. It does not identify
+the private deployment's exact builder/runtime version or replace its logs.
+The pinned builder defaulted its output metadata to `nodejs26.x`; the emitted
+code was executed with Node 22.23.1 on VM511, not on Vercel.
+
+The existing test runner now emits the API into an isolated directory containing
+only JavaScript and checks the default export over HTTP. Disabled Preview and
+Production return JSON 503 without ERP calls; enabled Preview returns a test
+upstream response. That test uses synthetic data and makes no staging requests.
+The client separately handles plain-text/HTML/invalid-JSON platform errors with
+a retry message, retains JSON gate/Cloudflare diagnostics, and caps response
+reads at the proxy's existing 2 MB limit.
+
+`agent-pre-push` passed TypeScript and 19 tests on VM511. The browser smoke now
+supports the actual packaged JavaScript entrypoint, using built frontend assets
+and the normal Preview gate rather than Vite's source adapter.
+
+At 1:09 PM EST, the packaged-function Firefox run passed all eight scenarios:
+44 real staging responses, 52 years, Toyota/Ford/Honda engine and category
+navigation plus reload, live SKU price CAD 28 and quantity-two subtotal CAD 56,
+and zero browser exceptions. Desktop and 390px mobile screenshots were reviewed;
+the mobile parts table continues to scroll inside its panel. No API interception,
+account calls, checkout calls or Cloudflare refusals occurred.
+
+- [Packaged function baseline/fix evidence](evidence/d1492-runtime/package-repro.json)
+- [Sanitized browser report](evidence/d1492-runtime/report.json)
+- [Desktop](evidence/d1492-runtime/desktop.png)
+- [Mobile parts](evidence/d1492-runtime/mobile-parts.png)
+- [Mobile cart](evidence/d1492-runtime/mobile-cart.png)
+
+Reproduction script and complete screenshots are retained under
+`/srv/dev/reports/roysauto-d1492-runtime/`. This validates emitted code against
+staging on VM511; authenticated Vercel acceptance still needs the owner check.
+
+### Current preview settings inventory and owner action
+
+Project: `brian-barbers-projects/auto-parts-storev3` (existing project).
+Branch: `fix/roysauto-d1492-staging-acceptance`.
+URL: https://auto-parts-storev3-git-fix-roysau-0e57df-brian-barbers-projects.vercel.app/
+
+No settings were changed by agents. Anonymous root and API requests returned
+302 to Vercel SSO; authenticated hosted verification remains outstanding.
+The earlier owner request named `feat/roysauto-d1492-catalog`; its branch-scoped
+flag does not cover this branch. For the current preview, Brian must:
+
+1. Settings → Deployment Protection: confirm Vercel Authentication covers
+   Preview deployments and attach a screenshot to D1492.
+2. Settings → Environment Variables: confirm or add
+   `ROYS_CATALOG_PREVIEW_ENABLED=true`, environment **Preview**, Git branch
+   **fix/roysauto-d1492-staging-acceptance only**. Redeploy that branch after
+   saving, then check `/api/catalog?resource=years` while signed in.
+
+Do not create a duplicate variable if the correct scope already exists. Do not
+set it for all branches or Production. The original branch's setting is not
+changed by this request. If the API still returns plain text, capture its status
+and short response/error code plus the function log; do not expose cookies or
+tokens. If it returns the JSON activation message, verify this exact branch
+scope and redeployment. If it includes a Cloudflare reference, stop and pass the
+Ray ID to Brian. Main remains on hold under D1493.
