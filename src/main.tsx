@@ -7,10 +7,6 @@ import { WishlistProvider } from './contexts/WishlistContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthProvider>
-      <WishlistProvider>
-        <App />
-      </WishlistProvider>
-    </AuthProvider>
+    <AuthProvider disabled><WishlistProvider><App /></WishlistProvider></AuthProvider>
   </StrictMode>,
 )

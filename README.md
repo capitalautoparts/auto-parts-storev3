@@ -1,301 +1,83 @@
-# Capital Auto Parts - Frontend Application
-
-A RockAuto-style auto parts e-commerce frontend built with React, TypeScript, and Tailwind CSS. This application connects to your existing AWS backend via REST APIs.
-
-## Features
-
-- **Three-Column Layout**: Left sidebar (vehicle/category tree), center content (parts table), right sidebar (shopping cart)
-- **Expandable Tree Navigation**: Year → Make → Model → Engine → Category → Part Type hierarchy
-- **Tier-Based Pricing**: Economy, Daily Driver, Premium, and Performance tiers with color-coded badges
-- **Position Grouping**: Parts grouped by position (Front, Rear, etc.) in table format
-- **Persistent Shopping Cart**: Always visible on the right side with quantity controls
-- **Responsive Design**: Optimized for desktop, tablet, and mobile devices
-- **Capital Auto Parts Branding**: Red (#c40c0c) primary color scheme
-
-## Tech Stack
-
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-- **Tailwind CSS 4** - Styling
-- **Radix UI** - Accessible UI components
-- **Axios** - HTTP client for API calls
-- **Wouter** - Lightweight routing (if needed for future pages)
-- **Sonner** - Toast notifications
-
-## Prerequisites
-
-- **Node.js** 18+ and npm/pnpm
-- **AWS Backend API** with the following endpoints (see API Requirements below)
-
-## Installation
-
-1. **Clone or extract this repository**
-
-```bash
-cd capital-auto-parts-frontend
-```
-
-2. **Install dependencies**
-
-```bash
-npm install
-# or
-pnpm install
-```
-
-3. **Configure environment variables**
-
-Create a `.env` file in the root directory:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and set your AWS backend URL:
-
-```env
-VITE_API_URL=https://your-aws-backend.com/api
-```
-
-4. **Start the development server**
-
-```bash
-npm run dev
-# or
-pnpm dev
-```
-
-The application will be available at `http://localhost:3000`
-
-## Building for Production
-
-```bash
-npm run build
-# or
-pnpm build
-```
-
-The built files will be in the `dist/` directory. Deploy this directory to your hosting provider (Vercel, Netlify, AWS S3 + CloudFront, etc.).
-
-## API Requirements
-
-Your AWS backend must implement the following REST API endpoints:
-
-### Vehicle Endpoints
-
-```
-GET /api/vehicles/years
-Response: [{ year: number }]
-
-GET /api/vehicles/makes?year=2010
-Response: [{ id: number, name: string, country?: string }]
-
-GET /api/vehicles/models?makeId=1&year=2010
-Response: [{ id: number, name: string, makeId: number }]
-
-GET /api/vehicles/engines?modelId=1
-Response: [{ id: number, name: string, modelId: number }]
-```
-
-### Category Endpoints
-
-```
-GET /api/categories
-Response: [{ id: number, name: string, parentId: number | null }]
-```
-
-### Parts Endpoints
-
-```
-GET /api/parts?categoryId=1&vehicleEngineId=1
-Response: [{
-  id: number,
-  brand: string,
-  partNumber: string,
-  description: string,
-  price: number,  // in dollars (e.g., 42.79)
-  tier: 'economy' | 'daily_driver' | 'premium' | 'performance',
-  warranty: string,
-  stock: number,
-  position?: string  // e.g., "Front", "Rear"
-}]
-```
-
-### Cart Endpoints
-
-```
-GET /api/cart?sessionId=xxx
-Response: {
-  id: number,
-  sessionId: string,
-  items: [{
-    id: number,
-    partId: number,
-    quantity: number,
-    part?: Part  // Include full part details
-  }]
-}
-
-POST /api/cart/items
-Body: { sessionId: string, partId: number, quantity: number }
-Response: Cart (same as GET /api/cart)
-
-PUT /api/cart/items/:itemId
-Body: { quantity: number }
-Response: Cart (same as GET /api/cart)
-
-DELETE /api/cart/items/:itemId
-Response: 204 No Content
-```
-
-## Project Structure
-
-```
-capital-auto-parts-frontend/
-├── src/
-│   ├── components/
-│   │   ├── ui/              # Radix UI components (Button, Badge, etc.)
-│   │   ├── Header.tsx       # Top header with logo, search, cart icon
-│   │   ├── TreeSidebar.tsx  # Left expandable tree navigation
-│   │   ├── PartsTable.tsx   # Center parts table with position grouping
-│   │   └── RightCartPanel.tsx  # Right shopping cart panel
-│   ├── lib/
-│   │   ├── api.ts           # API client and type definitions
-│   │   ├── hooks.ts         # Custom React hooks (useQuery, useMutation)
-│   │   └── utils.ts         # Utility functions
-│   ├── App.tsx              # Main application component
-│   ├── main.tsx             # Application entry point
-│   └── index.css            # Global styles and Tailwind config
-├── index.html
-├── package.json
-├── vite.config.ts
-├── tailwind.config.js
-├── tsconfig.json
-└── README.md
-```
-
-## Customization
-
-### Branding Colors
-
-Edit `src/index.css` to change the color scheme:
-
-```css
-:root {
-  --primary: 0 84% 40%;  /* Red #c40c0c */
-  --primary-foreground: 0 0% 100%;
-  /* ... other colors */
-}
-```
-
-### API Base URL
-
-The API base URL can be configured in three ways (in order of precedence):
-
-1. **Environment variable**: `VITE_API_URL` in `.env`
-2. **Vite proxy**: Configured in `vite.config.ts` for development
-3. **Default**: `http://localhost:4000/api`
-
-### Adding New Features
-
-- **Search functionality**: Update `Header.tsx` `onSearchChange` handler in `App.tsx`
-- **Checkout flow**: Implement `handleCheckout` in `App.tsx`
-- **Part images**: Add `imageUrl` field to Part type and display in `PartsTable.tsx`
-- **Comparison tool**: Add checkboxes to `PartsTable.tsx` and create comparison view
-
-## Development Tips
-
-### Hot Module Replacement (HMR)
-
-Vite provides instant HMR. Changes to components will reflect immediately without full page reload.
-
-### Type Safety
-
-All API responses are typed. If your backend returns different shapes, update the types in `src/lib/api.ts`.
-
-### Error Handling
-
-API errors are caught and displayed as toast notifications. Customize error messages in the mutation `onError` callbacks in `App.tsx`.
-
-### Session Management
-
-The app uses a client-side generated `sessionId` for cart persistence. For production, consider:
-- Storing `sessionId` in localStorage
-- Using JWT tokens for authenticated users
-- Implementing server-side session management
-
-## Deployment
-
-### Vercel
-
-```bash
-npm install -g vercel
-vercel
-```
-
-### Netlify
-
-```bash
-npm install -g netlify-cli
-netlify deploy --prod
-```
-
-### AWS S3 + CloudFront
-
-```bash
-npm run build
-aws s3 sync dist/ s3://your-bucket-name
-# Configure CloudFront distribution to point to the S3 bucket
-```
-
-### Environment Variables in Production
-
-Make sure to set `VITE_API_URL` in your hosting provider's environment variables:
-
-- **Vercel**: Project Settings → Environment Variables
-- **Netlify**: Site Settings → Build & Deploy → Environment
-- **AWS**: Use CloudFront environment variables or build-time substitution
-
-## Troubleshooting
-
-### CORS Errors
-
-If you see CORS errors in the browser console, your AWS backend needs to allow requests from your frontend domain:
-
-```javascript
-// Example Express.js CORS configuration
-app.use(cors({
-  origin: ['http://localhost:3000', 'https://your-frontend-domain.com'],
-  credentials: true
-}));
-```
-
-### API Connection Issues
-
-1. Check that `VITE_API_URL` is set correctly
-2. Verify your backend is running and accessible
-3. Check browser Network tab for failed requests
-4. Ensure API endpoints match the expected format (see API Requirements)
-
-### Build Errors
-
-```bash
-# Clear node_modules and reinstall
-rm -rf node_modules package-lock.json
-npm install
-
-# Clear Vite cache
-rm -rf node_modules/.vite
-```
-
-## License
-
-MIT
-
-## Support
-
-For issues related to:
-- **Frontend bugs**: Check browser console for errors
-- **Backend integration**: Verify API endpoints match the requirements
-- **Styling issues**: Review Tailwind CSS classes and `index.css`
+# RoysAuto / Capital Auto Parts catalog exploration
+
+The existing single-page design is preserved: original red header, expanding
+vehicle tree, inline parts tables, product dialog and right-side Quick Cart.
+The active catalog now reads ERP staging instead of the prototype fixtures.
+Canada/CAD is enabled; future US/USD configuration remains explicit and disabled.
+
+## Local development and validation
+
+Use Node 22. On a development machine, install dependencies with npm ci and start
+the Vite development server. The same read-only server adapter serves local Vite
+and the Vercel API function. No database connection string or credentials are
+needed. Requests use the fixed staging public API and an honest application UA.
+
+VM510 is orchestration only. Check dev-remote --queue before validation and use
+agent-pre-push for TypeScript and contract tests on VM511. Production builds and
+the scripts/browser-smoke.mjs Firefox check also run on VM511. The browser check
+uses real ERP data; it does not intercept or mock catalog responses.
+
+## What is connected
+
+- The original Year → Make → Model → Engine tree uses light-duty ERP references.
+- Categories load their mapped children only when expanded. Results render inline
+  beneath the chosen category, with pagination, brand and stock filters.
+- The header searches vehicles by year/make/model and parts by part number or
+  keyword. Enter submits a real server search; it does not just filter one page.
+- Full vehicle context and compound tree keys isolate different model years that
+  share an ERP model or engine ID. Late responses cannot replace newer results.
+- ERP string IDs, prices, availability, core charges, packs and application notes
+  reach the existing components. Missing prices/quality tiers are not fabricated.
+- Quick Cart and wishlist are browser-local test lists. Cart quantities persist
+  across reloads. Saved prices are estimates, not a checkout quote.
+- Account creation, payment/address capture, shipping/tax simulation and order
+  placement are disabled in the active catalog. Helcim is a later work package.
+
+The unused mock catalog and standalone checkout pages have been removed.
+There is no silent mock fallback after an API error.
+Tools, VIN lookup, order status and promotions are existing unconnected navigation
+placeholders; they are not claimed as implemented integrations.
+
+## Deployment gate
+
+Existing project: brian-barbers-projects/auto-parts-storev3.
+Main alias: https://auto-parts-storev3.vercel.app.
+Protected task preview:
+https://auto-parts-storev3-git-fix-roysau-0e57df-brian-barbers-projects.vercel.app.
+
+Anonymous root and API requests to the task preview redirect to Vercel SSO.
+Agents have no authorized Vercel account access. Brian must confirm Preview
+Authentication in Settings → Deployment Protection (attach screenshot), then
+add ROYS_CATALOG_PREVIEW_ENABLED=true in Settings → Environment Variables,
+scoped to Preview and branch fix/roysauto-d1492-staging-acceptance only if absent,
+and redeploy that branch. The earlier D1492 request named the original
+feat/roysauto-d1492-catalog branch; that scope does not enable this follow-up.
+Check the current D1492 owner-action note before repeating a request. Do not
+create credentials or enable the flag for all branches or Production.
+
+The adapter requires VERCEL=1, VERCEL_ENV=preview and that flag. It stays disabled
+on Vercel Production, including main's public test alias. A main merge alone
+cannot activate ERP reads there. Changing the hosting scope requires an explicit
+configuration inventory and protection verification; no automatic public
+activation is included. HTML/API noindex directives are not access control.
+
+See docs/catalog-exploration.md for current evidence and remaining work.
+
+## Staging acceptance follow-up
+
+PR #1 merged into staging at 62e7395. Account-owner activation of the original
+protected branch preview has not been confirmed; a staging-branch merge does not
+change its branch-specific environment settings.
+
+The follow-up corrects untracked ERP availability to “Available to order” without
+turning the search API's default lead time into an ETA. Browser acceptance reads
+the current ERP price when checking the saved cart, and exercises multiple makes
+with complete vehicle context. No direct database credentials are required:
+vehicles, parts and CAD prices are read through the existing ERP staging API.
+
+The TypeScript configuration rewrites relative `.ts` imports to `.js` for Vercel's
+emitted Node function. `npm test` includes an isolated emitted-entrypoint test;
+source-only Vite tests cannot establish that the packaged function starts.
+For manual VM511 browser acceptance, `ROYS_SMOKE_FUNCTION_ENTRYPOINT` can point
+to the packaged `api/catalog.js`; the smoke then serves built assets with that
+function and requires the normal Preview activation variables.

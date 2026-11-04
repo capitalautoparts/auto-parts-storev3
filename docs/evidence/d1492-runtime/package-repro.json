@@ -1,0 +1,45 @@
+{
+  "node": "v22.23.1",
+  "builder": "29.0.1",
+  "reports": [
+    {
+      "rewrite": false,
+      "handler": "api/catalog.js",
+      "runtime": "nodejs26.x",
+      "files": [
+        "api/catalog.js.map",
+        "server/catalog-proxy.js.map",
+        "api/catalog.js",
+        "package.json",
+        "server/catalog-proxy.js"
+      ],
+      "entrypoint": [
+        "export { default } from '../server/catalog-proxy.ts';"
+      ],
+      "error": {
+        "code": "ERR_MODULE_NOT_FOUND",
+        "message": "Cannot find module '/home/bbarber/dev-runner/tmp/roys-vercel-package-SJqURA/baseline-output/server/catalog-proxy.ts' imported from /home/bbarber/dev-runner/tmp/roys-vercel-package-SJqURA/baseline-output/api/catalog.js"
+      }
+    },
+    {
+      "rewrite": true,
+      "handler": "api/catalog.js",
+      "runtime": "nodejs26.x",
+      "files": [
+        "api/catalog.js.map",
+        "server/catalog-proxy.js.map",
+        "api/catalog.js",
+        "package.json",
+        "server/catalog-proxy.js"
+      ],
+      "entrypoint": [
+        "export { default } from \"../server/catalog-proxy.js\";"
+      ],
+      "status": 503,
+      "contentType": "application/json; charset=utf-8",
+      "body": {
+        "error": "ERP preview access has not been enabled for this deployment."
+      }
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { vehicleApi, type VehicleSearchResult, type VehicleContext } from "@/lib/api";
 
 interface VehicleSearchBarProps {
+  appliedQuery?: string;
   onVehicleSelect: (result: VehicleSearchResult) => void;
   onPartSelect?: (result: VehicleSearchResult) => void;
   onCategorySelect?: (result: VehicleSearchResult) => void;
@@ -14,6 +15,7 @@ interface VehicleSearchBarProps {
 }
 
 export function VehicleSearchBar({
+  appliedQuery = '',
   onVehicleSelect,
   onPartSelect,
   onCategorySelect,
@@ -25,9 +27,11 @@ export function VehicleSearchBar({
   const [results, setResults] = useState<VehicleSearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { setQuery(appliedQuery); }, [appliedQuery, vehicleContext]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -40,10 +44,13 @@ export function VehicleSearchBar({
   }, []);
 
   useEffect(() => {
+    let active = true;
     const searchTimeout = setTimeout(async () => {
+      setError('');
       if (query.trim().length < 2) {
         setResults([]);
         setIsOpen(false);
+        setIsLoading(false);
         return;
       }
 
@@ -59,18 +66,18 @@ export function VehicleSearchBar({
           searchResults = await vehicleApi.search(query);
         }
 
+        if (!active) return;
         setResults(searchResults);
         setIsOpen(searchResults.length > 0);
         setHighlightedIndex(-1);
       } catch (error) {
-        console.error("Search failed:", error);
-        setResults([]);
+        if (active) { setError((error as Error).message); setResults([]); setIsOpen(false); }
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     }, 200);
 
-    return () => clearTimeout(searchTimeout);
+    return () => { active = false; clearTimeout(searchTimeout); };
   }, [query, vehicleContext]);
 
   const handleSelect = (result: VehicleSearchResult) => {
@@ -124,6 +131,7 @@ export function VehicleSearchBar({
     setResults([]);
     setIsOpen(false);
     inputRef.current?.focus();
+    onTextSearch?.('');
   };
 
   return (
@@ -131,6 +139,14 @@ export function VehicleSearchBar({
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
+          id="catalog-search"
+          aria-label="Search by vehicle or part number"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={isOpen}
+          aria-controls="catalog-search-results"
+          aria-activedescendant={highlightedIndex >= 0 ? `catalog-result-${highlightedIndex}` : undefined}
+          maxLength={120}
           ref={inputRef}
           type="text"
           value={query}
@@ -146,6 +162,7 @@ export function VehicleSearchBar({
         />
         {query && (
           <button
+            aria-label="Clear search"
             onClick={clearSearch}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
@@ -155,10 +172,13 @@ export function VehicleSearchBar({
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-md shadow-lg border border-gray-200 z-[9999] max-h-80 overflow-auto">
+        <div id="catalog-search-results" role="listbox" aria-label="Search suggestions" className="absolute top-full left-0 right-0 mt-1 bg-white rounded-md shadow-lg border border-gray-200 z-[9999] max-h-80 overflow-auto">
           {results.length > 0 ? (
             results.map((result, index) => (
               <button
+                role="option"
+                id={`catalog-result-${index}`}
+                aria-selected={highlightedIndex === index}
                 key={`${result.type}-${result.label}`}
                 className={cn(
                   "w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-gray-100 transition-colors text-gray-900",
@@ -209,6 +229,7 @@ export function VehicleSearchBar({
           Searching...
         </div>
       )}
+      {error && <p role="alert" className="absolute top-full bg-white text-red-700 border rounded p-2 text-xs z-50">{error}</p>}
     </div>
   );
 }

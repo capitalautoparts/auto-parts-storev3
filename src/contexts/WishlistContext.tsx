@@ -1,46 +1,40 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import type { Part } from "@/lib/api";
+import { safeStorage, saveStorage } from '@/features/catalog/model';
 
 interface WishlistItem {
   id: number;
-  partId: number;
+  partId: string | number;
   addedAt: string;
   part?: Part;
 }
 
 interface WishlistContextValue {
   items: WishlistItem[];
-  addToWishlist: (partId: number, part?: Part) => void;
-  removeFromWishlist: (partId: number) => void;
-  isInWishlist: (partId: number) => boolean;
+  addToWishlist: (partId: string | number, part?: Part) => void;
+  removeFromWishlist: (partId: string | number) => void;
+  isInWishlist: (partId: string | number) => boolean;
   itemCount: number;
 }
 
 const WishlistContext = createContext<WishlistContextValue | null>(null);
 
-const WISHLIST_STORAGE_KEY = "cap-wishlist";
+const WISHLIST_STORAGE_KEY = "roysauto.original-wishlist.v1";
 
 export function WishlistProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<WishlistItem[]>([]);
-
-  // Load wishlist from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(WISHLIST_STORAGE_KEY);
-    if (stored) {
-      try {
-        setItems(JSON.parse(stored));
-      } catch {
-        localStorage.removeItem(WISHLIST_STORAGE_KEY);
-      }
-    }
-  }, []);
+  const [items, setItems] = useState<WishlistItem[]>(() => {
+    try {
+      const value = JSON.parse(safeStorage(WISHLIST_STORAGE_KEY) ?? '[]');
+      return Array.isArray(value) ? value.filter(item => typeof item?.partId === 'string' && item.part?.id === item.partId && typeof item.part?.price === 'number' && typeof item.part?.brand === 'string' && typeof item.part?.partNumber === 'string').slice(0, 100) : [];
+    } catch { return []; }
+  });
 
   // Save wishlist to localStorage when it changes
   useEffect(() => {
-    localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(items));
+    saveStorage(WISHLIST_STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
-  const addToWishlist = (partId: number, part?: Part) => {
+  const addToWishlist = (partId: string | number, part?: Part) => {
     setItems((prev) => {
       if (prev.some((item) => item.partId === partId)) {
         return prev;
@@ -55,11 +49,11 @@ export function WishlistProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const removeFromWishlist = (partId: number) => {
+  const removeFromWishlist = (partId: string | number) => {
     setItems((prev) => prev.filter((item) => item.partId !== partId));
   };
 
-  const isInWishlist = (partId: number) => {
+  const isInWishlist = (partId: string | number) => {
     return items.some((item) => item.partId === partId);
   };
 

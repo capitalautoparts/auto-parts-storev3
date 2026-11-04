@@ -5,7 +5,7 @@ import type { Part } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface WishlistButtonProps {
-  partId: number;
+  partId: string | number;
   part?: Part;
   size?: "sm" | "default";
   className?: string;

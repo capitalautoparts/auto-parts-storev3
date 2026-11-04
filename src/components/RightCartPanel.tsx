@@ -19,13 +19,15 @@ interface ShippingOption {
 
 interface RightCartPanelProps {
   items: CartItem[];
-  onUpdateQuantity: (itemId: number, quantity: number) => void;
-  onRemoveItem: (itemId: number) => void;
+  catalogPreview?: boolean;
+  onUpdateQuantity: (itemId: string | number, quantity: number) => void;
+  onRemoveItem: (itemId: string | number) => void;
   onCheckout: () => void;
 }
 
 export function RightCartPanel({
   items,
+  catalogPreview = false,
   onUpdateQuantity,
   onRemoveItem,
   onCheckout,
@@ -71,6 +73,7 @@ export function RightCartPanel({
     { id: "overnight", carrier: "UPS", name: "Next Day", price: 34.50, estimatedDays: "1 business day" },
   ];
 
+  const pricesComplete = items.every(item => item.part?.price != null && item.part?.currency === "CAD");
   const subtotal = items.reduce((sum, item) => sum + (item.part?.price || 0) * item.quantity, 0);
   const selectedShippingOption = shippingOptions.find(o => o.id === selectedShipping);
   const shippingCost = selectedShippingOption?.price || 0;
@@ -93,6 +96,7 @@ export function RightCartPanel({
   };
 
   const handlePlaceOrder = () => {
+    if (catalogPreview) return;
     // Validate form
     if (!shippingAddress.email || !shippingAddress.fullName || !shippingAddress.address) {
       toast.error("Please fill in shipping address");
@@ -127,7 +131,7 @@ export function RightCartPanel({
   };
 
   return (
-    <div className="w-full lg:w-80 bg-card border-l border-border flex flex-col h-full">
+    <div className="w-full lg:w-80 bg-white border-l border-border flex flex-col h-full">
       <div className="p-3 bg-brand-navy text-white text-xs uppercase tracking-[0.3em] font-display border-b border-black/20">
         Quick Cart
       </div>
@@ -172,6 +176,7 @@ export function RightCartPanel({
                       )}
                     </div>
                     <button
+                      aria-label={`Remove ${item.part!.partNumber}`}
                       onClick={() => onRemoveItem(item.id)}
                       className="text-muted-foreground hover:text-destructive"
                     >
@@ -182,6 +187,7 @@ export function RightCartPanel({
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex items-center gap-2 border border-border rounded bg-white">
                       <button
+                        aria-label={`Decrease quantity for ${item.part!.partNumber}`}
                         onClick={() => onUpdateQuantity(item.id, Math.max(1, item.quantity - 1))}
                         className="p-1 hover:bg-secondary"
                       >
@@ -191,6 +197,8 @@ export function RightCartPanel({
                         {item.quantity}
                       </span>
                       <button
+                        aria-label={`Increase quantity for ${item.part!.partNumber}`}
+                        disabled={item.quantity >= 99}
                         onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
                         className="p-1 hover:bg-secondary"
                       >
@@ -199,7 +207,7 @@ export function RightCartPanel({
                     </div>
 
                     <div className="text-base font-bold text-brand-ink">
-                      ${((item.part!.price * item.quantity)).toFixed(2)}
+                      {item.part!.price == null ? "Price unavailable" : `$${(item.part!.price * item.quantity).toFixed(2)}`}
                     </div>
                   </div>
                 </Card>
@@ -207,7 +215,7 @@ export function RightCartPanel({
             </div>
           )}
 
-          {items.length > 0 && (
+          {items.length > 0 && !catalogPreview && (
             <>
               {/* Shipping Address */}
               <div className="border border-border rounded-md overflow-hidden">
@@ -377,7 +385,7 @@ export function RightCartPanel({
               </div>
 
               {/* Shipping Options */}
-              {shippingCalculated && (
+              {shippingCalculated && !catalogPreview && (
                 <div className="border border-border rounded-md overflow-hidden">
                   <div className="px-3 py-2 bg-[#a00a0a] text-white text-[11px] uppercase tracking-[0.2em] font-semibold flex items-center gap-2">
                     <Truck className="h-4 w-4" />
@@ -474,13 +482,15 @@ export function RightCartPanel({
         </div>
       </ScrollArea>
 
+      {catalogPreview && <p className="p-3 text-xs text-muted-foreground">Saved CAD estimates only; prices and fitment must be rechecked. Subtotal excludes core charges, shipping and tax. No order or payment is created.</p>}
+
       {/* Order Summary Footer */}
       <div className="p-4 border-t border-border bg-secondary space-y-2">
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Subtotal</span>
-          <span className="font-medium">${subtotal.toFixed(2)}</span>
+          <span className="font-medium">{pricesComplete ? `$${subtotal.toFixed(2)}` : "Price unavailable"}</span>
         </div>
-        {shippingCalculated && (
+        {shippingCalculated && !catalogPreview && (
           <>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Shipping</span>
@@ -498,16 +508,16 @@ export function RightCartPanel({
             </div>
           </>
         )}
-        {!shippingCalculated && (
+        {!shippingCalculated && !catalogPreview && (
           <div className="flex items-center justify-between">
             <span className="font-semibold text-brand-ink">Subtotal</span>
-            <span className="text-xl font-bold text-brand-ink">${subtotal.toFixed(2)}</span>
+            <span className="text-xl font-bold text-brand-ink">{pricesComplete ? `$${subtotal.toFixed(2)}` : "Price unavailable"}</span>
           </div>
         )}
 
         <Button
           onClick={handlePlaceOrder}
-          disabled={items.length === 0 || !shippingCalculated || processingOrder}
+          disabled={catalogPreview || items.length === 0 || !shippingCalculated || processingOrder}
           className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
           size="lg"
         >
@@ -517,11 +527,11 @@ export function RightCartPanel({
               Processing...
             </>
           ) : (
-            "Place Order"
+            catalogPreview ? "Checkout disabled for testing" : "Place Order"
           )}
         </Button>
 
-        {!shippingCalculated && items.length > 0 && (
+        {!catalogPreview && !shippingCalculated && items.length > 0 && (
           <p className="text-xs text-center text-muted-foreground">
             Calculate shipping to see total and place order
           </p>

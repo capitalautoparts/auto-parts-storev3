@@ -29,12 +29,13 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 const AUTH_STORAGE_KEY = "cap-auth-user";
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children, disabled = false }: { children: ReactNode; disabled?: boolean }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Load user from localStorage on mount
   useEffect(() => {
+    if (disabled) { setIsLoading(false); return; }
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     if (stored) {
       try {
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
+    if (disabled) throw new Error('Accounts are disabled during catalog testing.');
     // Mock login - in real app, this would call an API
     await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -68,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (data: RegisterData) => {
+    if (disabled) throw new Error('Accounts are disabled during catalog testing.');
     // Mock registration - in real app, this would call an API
     await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -89,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    if (!disabled) localStorage.removeItem(AUTH_STORAGE_KEY);
   };
 
   return (
