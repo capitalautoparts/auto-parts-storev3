@@ -94,11 +94,70 @@ export function saveStorage(key: string, value: string): boolean {
   try { localStorage.setItem(key, value); return true; } catch { return false; }
 }
 
+const MAX_CATALOG_RESPONSE_BYTES = 2_000_000;
+const RETRYABLE_CATALOG_ERROR = 'The catalog is temporarily unavailable. Please try again shortly.';
+
+async function cancelCatalogResponse(response: Response): Promise<void> {
+  try { await response.body?.cancel(); } catch { /* The response is already unusable. */ }
+}
+
+async function readCatalogResponse(response: Response): Promise<string | null> {
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_CATALOG_RESPONSE_BYTES) {
+    await cancelCatalogResponse(response);
+    return null;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+
+  const decoder = new TextDecoder();
+  let text = '';
+  let bytesRead = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      if (bytesRead + value.byteLength > MAX_CATALOG_RESPONSE_BYTES) {
+        try { await reader.cancel(); } catch { /* The response is already unusable. */ }
+        return null;
+      }
+      bytesRead += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function isJsonResponse(response: Response): boolean {
+  const contentType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  return contentType === 'application/json' || !!contentType?.endsWith('+json');
+}
+
 export async function catalogFetch<T>(resource: string, params: URLSearchParams, signal?: AbortSignal): Promise<T> {
   const query = new URLSearchParams(params);
   query.set('resource', resource);
   const response = await fetch(`/api/catalog?${query}`, { signal });
-  const result = await response.json();
-  if (!response.ok) throw new Error(`${result.error ?? 'The catalog is unavailable.'}${result.reference ? ` Reference: ${result.reference}` : ''}`);
+  if (!isJsonResponse(response)) {
+    await cancelCatalogResponse(response);
+    throw new Error(RETRYABLE_CATALOG_ERROR);
+  }
+  const body = await readCatalogResponse(response);
+  if (body === null) throw new Error(RETRYABLE_CATALOG_ERROR);
+
+  let result: unknown;
+  try { result = JSON.parse(body); } catch { throw new Error(RETRYABLE_CATALOG_ERROR); }
+  if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error(RETRYABLE_CATALOG_ERROR);
+  if (!response.ok) {
+    const errorBody = result as { error?: unknown; reference?: unknown };
+    const error = typeof errorBody.error === 'string' && errorBody.error.trim()
+      ? errorBody.error
+      : RETRYABLE_CATALOG_ERROR;
+    const reference = typeof errorBody.reference === 'string' && errorBody.reference.trim()
+      ? ` Reference: ${errorBody.reference}`
+      : '';
+    throw new Error(`${error}${reference}`);
+  }
   return result as T;
 }

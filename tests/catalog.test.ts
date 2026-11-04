@@ -3,10 +3,109 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { createCatalogHandler, previewEnabled, upstreamUrl } from '../server/catalog-proxy.ts';
-import { changeQuery, priceLabel, readCart, searchParams } from '../src/features/catalog/model.ts';
+import { catalogFetch, changeQuery, priceLabel, readCart, searchParams } from '../src/features/catalog/model.ts';
 import type { Part } from '../src/features/catalog/model.ts';
 import { mapErpPart, decodeCart, vehicleApi, cartApi } from '../src/lib/erp-api.ts';
 import { availabilitySummary } from '../src/lib/availability.ts';
+
+async function withCatalogResponse<T>(response: Response, run: () => Promise<T>) {
+  const originalFetch = globalThis.fetch;
+  let request: RequestInfo | URL | undefined;
+  let init: RequestInit | undefined;
+  globalThis.fetch = async (input, options) => {
+    request = input;
+    init = options;
+    return response;
+  };
+  try { return { result: await run(), request, init }; }
+  finally { globalThis.fetch = originalFetch; }
+}
+
+test('catalog fetch turns a plain-text platform 500 into a retryable message without exposing its body', async () => {
+  await withCatalogResponse(
+    new Response('A server error occurred. Internal detail: private-token', { status: 500, headers: { 'content-type': 'text/plain' } }),
+    async () => assert.rejects(catalogFetch('years', new URLSearchParams()), error => {
+      assert.match((error as Error).message, /temporarily unavailable.*try again shortly/i);
+      assert.doesNotMatch((error as Error).message, /private-token|A server error/);
+      return true;
+    }),
+  );
+});
+
+test('catalog fetch handles invalid JSON without leaking the parser exception', async () => {
+  await withCatalogResponse(
+    new Response('{not json', { status: 500, headers: { 'content-type': 'application/json' } }),
+    async () => assert.rejects(catalogFetch('years', new URLSearchParams()), error => {
+      assert.match((error as Error).message, /temporarily unavailable.*try again shortly/i);
+      assert.doesNotMatch((error as Error).message, /JSON|Unexpected token|not json/i);
+      return true;
+    }),
+  );
+});
+
+test('catalog fetch treats a non-JSON HTML redirect as a retryable failure even on 200', async () => {
+  await withCatalogResponse(
+    new Response('<html>Sign in to Vercel</html>', { status: 200, headers: { 'content-type': 'text/html' } }),
+    async () => assert.rejects(catalogFetch('years', new URLSearchParams()), error => {
+      assert.match((error as Error).message, /temporarily unavailable.*try again shortly/i);
+      assert.doesNotMatch((error as Error).message, /Sign in|<html>/);
+      return true;
+    }),
+  );
+});
+
+test('catalog fetch preserves JSON gate errors and diagnostic Cloudflare references', async () => {
+  const { request, init } = await withCatalogResponse(
+    Response.json({ error: 'Catalog preview is not enabled.', reference: 'diagnostic-ray' }, { status: 503 }),
+    () => assert.rejects(catalogFetch('years', new URLSearchParams()), error => {
+      assert.equal((error as Error).message, 'Catalog preview is not enabled. Reference: diagnostic-ray');
+      assert.doesNotMatch((error as Error).message, /staff|token/i);
+      return true;
+    }),
+  );
+  assert.equal(new Headers(init?.headers).get('authorization'), null);
+  assert.match(String(request), /^\/api\/catalog\?/);
+});
+
+test('catalog fetch returns successful JSON data', async () => {
+  const { result: data } = await withCatalogResponse(
+    Response.json({ years: [2020, 2021] }),
+    async () => catalogFetch<{ years: number[] }>('years', new URLSearchParams()),
+  );
+  assert.deepEqual(data, { years: [2020, 2021] });
+});
+
+test('catalog fetch accepts valid JSON larger than 64 KiB', async () => {
+  const payload = 'x'.repeat(70_000);
+  const { result } = await withCatalogResponse(
+    Response.json({ payload }),
+    () => catalogFetch<{ payload: string }>('search', new URLSearchParams()),
+  );
+  assert.equal(result.payload.length, 70_000);
+});
+
+test('catalog fetch rejects JSON responses larger than the proxy limit', async () => {
+  await withCatalogResponse(
+    Response.json({ payload: 'x'.repeat(2_000_001) }),
+    () => assert.rejects(catalogFetch('search', new URLSearchParams()), error => {
+      assert.match((error as Error).message, /temporarily unavailable.*try again shortly/i);
+      assert.doesNotMatch((error as Error).message, /x{20}/);
+      return true;
+    }),
+  );
+});
+
+test('catalog fetch rejects JSON primitives as malformed endpoint responses', async () => {
+  for (const value of [null, 42, 'unexpected']) {
+    await withCatalogResponse(
+      Response.json(value),
+      () => assert.rejects(catalogFetch('years', new URLSearchParams()), error => {
+        assert.match((error as Error).message, /temporarily unavailable.*try again shortly/i);
+        return true;
+      }),
+    );
+  }
+});
 
 test('upstream is fixed, bounded, read-only and explicitly independent of Shopify sellability', () => {
   const url = upstreamUrl('/api/catalog?resource=search&q=ALD1212M');
@@ -103,7 +202,9 @@ test('stock labels respect ERP status, including unknown counts and non-stock le
     ['low_stock', 2, 3, 'Low Stock'],
     ['out_of_stock', 0, 3, 'Out of Stock'],
     ['out_of_stock', 20, 3, 'Out of Stock'],
-    ['available', null, 3, 'Special order · estimated lead time 3 days'],
+    ['available', null, 3, 'Available to order'],
+    ['available', null, undefined, 'Available to order'],
+    ['available', null, 0, 'Available to order'],
     ['special_order', 0, 1, 'Special order · estimated lead time 1 day'],
     ['special_order', 0, -1, 'Special order'],
     ['backorder', null, 5, 'Backorder · estimated lead time 5 days'],

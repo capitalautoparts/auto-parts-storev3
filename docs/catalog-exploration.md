@@ -62,7 +62,7 @@ request to merge main does not itself configure that environment. Protected
 hosted acceptance and any wider environment configuration must be recorded before
 claiming main is a working ERP-connected test catalog.
 
-## Current validation
+## PR #1 validation
 
 TypeScript, production build and ten contract tests passed on VM511. The final
 integrated Firefox check passed six scenarios with 19 real ERP API requests and
@@ -102,9 +102,10 @@ showing a result does not convert every application into an unconditional fit.
 
 Both the table and detail dialog use ERP availability status. Only an explicit
 out_of_stock result says Out of Stock. Unconfirmed status stays unconfirmed even
-if a quantity or ERP default lead time is present. Available/special-order and
-backorder statuses retain their meaning; positive lead times are labelled as
-estimates, not delivery guarantees. Low stock remains distinct from in stock.
+if a quantity or ERP default lead time is present. Explicit special-order and
+backorder lead times are labelled as estimates, not delivery guarantees.
+Untracked `available` means “Available to order”; it does not expose the search
+API's default lead time as an ETA. Low stock remains distinct from in stock.
 
 Removed unused mock-data.ts, CheckoutPage, OrderConfirmationPage and the three
 components/checkout files. No remaining source imports them. AuthContext and
@@ -118,9 +119,138 @@ Cart additions now normalize quantities before both new-line and existing-line
 updates, and reject non-finite inputs. The duplicate price-formatting ternary is
 removed. Availability and cart regression contracts cover these review findings.
 
+## Orchestrated staging acceptance follow-up
+
+PR #1 merged into staging at 62e7395. The next work package is isolated in
+fix/roysauto-d1492-staging-acceptance. Two smaller Codex executors have separate
+ownership: availability semantics/contracts, and vehicle/pricing browser checks;
+the orchestrator owns integration, remote validation and release review.
+
+Read-only samples on 2026-11-04 (Eastern) returned HTTP 200 throughout:
+
+| Vehicle | Make ID | Model ID | Engine options |
+| --- | --- | --- | --- |
+| 2020 Toyota Camry | 76 | 1011 | 2 |
+| 2021 Ford F-150 | 54 | 666 | 6 |
+| 2019 Honda Civic | 59 | 752 | 3 |
+
+The years endpoint returned 52 entries from 1976 through 2027. This is sampled
+contract evidence, not a claim that all vehicles have complete parts coverage.
+Public staging search returned ALD1212M at CAD 28, BRX1212 at CAD 38, and a starter
+with a CAD 50 core charge at the time checked. Prices may change; browser checks
+must derive their expected cart subtotal from the current response.
+
+ERP publicStockTier.ts defines `available` as untracked but orderable. The earlier
+catalog labelled it Special order; the follow-up fixes that distinction and tests
+positive/default, absent and zero lead times. Prices come from the ERP search
+route's published pricing logic; no mock catalog or Shopify price lookup is used.
+
+Anonymous requests to the supplied preview root and catalog API still redirect
+to Vercel sign-in. No account-owner confirmation of the existing activation
+request is recorded on D1492. Protected hosted acceptance remains outstanding;
+these direct API and VM511 checks must not be described as a hosted preview pass.
+Main remains on hold and no deployment settings or credentials have changed.
+
 ## Future work
 
 Helcim sandbox checkout, shipping/tax, independent sales eligibility, SSR product
 SEO, canonical .ca/.com rules, measured load/latency and catalog coverage remain
 separate work packages. Multi-company ERP is outside scope. The existing Tools,
 VIN, order-status and promotions placeholders are not connected by this change.
+
+## Follow-up validation
+
+VM511 agent-pre-push passed TypeScript and all ten contract tests. The final
+build and eight integrated Firefox scenarios passed with 44 real ERP responses
+and zero browser exceptions. Ford F-150 (3.5L, engine 2146) and Honda Civic
+(1.5L, engine 2118) both rendered brake-pad results before and after reload,
+with fresh full-context searches. The saved cart subtotal used the live CAD
+price for exact SKU DVNJ_ALD1212M, not a fixed total or ambiguous part number.
+
+Reviewed desktop (1440×1000), mobile parts and mobile cart (390×844):
+
+- [Desktop](evidence/d1492-acceptance/desktop.png)
+- [Mobile parts](evidence/d1492-acceptance/mobile-parts.png)
+- [Mobile cart](evidence/d1492-acceptance/mobile-cart.png)
+- [Sanitized response/context report](evidence/d1492-acceptance/report.json)
+
+Local evidence: /srv/dev/reports/roysauto-d1492-acceptance/. A browser-only
+invocation moved to a fresh runner lane without built assets; the missing dist
+was confirmed, then build plus browser smoke in one job passed. No ERP 403 was
+observed. Hosted Vercel acceptance is still unverified behind sign-in.
+
+## Packaged function failure and repair — 2026-11-04
+
+Brian's follow-up preview displayed `Unexpected token 'A'` instead of vehicle
+years. This is a plain-text platform response being parsed as JSON. The proxy's
+own error paths return JSON, so source-only Vite acceptance was insufficient.
+
+The failure was reproduced on VM511 using pinned `@vercel/node@29.0.1`,
+`@vercel/build-utils@15.2.1`, repository TypeScript 5.9.3 and Node 22.23.1:
+
+- Original config: the packaged `api/catalog.js` retained its import of
+  `../server/catalog-proxy.ts`, but the package contained only
+  `server/catalog-proxy.js`. Loading it failed with `ERR_MODULE_NOT_FOUND`.
+- With `rewriteRelativeImportExtensions: true`: the import becomes `.js`, the
+  packaged function loads and returns the expected JSON 503 with activation
+  unset, without calling ERP.
+
+This demonstrates a concrete packaging defect and repair. It does not identify
+the private deployment's exact builder/runtime version or replace its logs.
+The pinned builder defaulted its output metadata to `nodejs26.x`; the emitted
+code was executed with Node 22.23.1 on VM511, not on Vercel.
+
+The existing test runner now emits the API into an isolated directory containing
+only JavaScript and checks the default export over HTTP. Disabled Preview and
+Production return JSON 503 without ERP calls; enabled Preview returns a test
+upstream response. That test uses synthetic data and makes no staging requests.
+The client separately handles plain-text/HTML/invalid-JSON platform errors with
+a retry message, retains JSON gate/Cloudflare diagnostics, and caps response
+reads at the proxy's existing 2 MB limit.
+
+`agent-pre-push` passed TypeScript and 19 tests on VM511. The browser smoke now
+supports the actual packaged JavaScript entrypoint, using built frontend assets
+and the normal Preview gate rather than Vite's source adapter.
+
+At 1:09 PM EST, the packaged-function Firefox run passed all eight scenarios:
+44 real staging responses, 52 years, Toyota/Ford/Honda engine and category
+navigation plus reload, live SKU price CAD 28 and quantity-two subtotal CAD 56,
+and zero browser exceptions. Desktop and 390px mobile screenshots were reviewed;
+the mobile parts table continues to scroll inside its panel. No API interception,
+account calls, checkout calls or Cloudflare refusals occurred.
+
+- [Packaged function baseline/fix evidence](evidence/d1492-runtime/package-repro.json)
+- [Sanitized browser report](evidence/d1492-runtime/report.json)
+- [Desktop](evidence/d1492-runtime/desktop.png)
+- [Mobile parts](evidence/d1492-runtime/mobile-parts.png)
+- [Mobile cart](evidence/d1492-runtime/mobile-cart.png)
+
+Reproduction script and complete screenshots are retained under
+`/srv/dev/reports/roysauto-d1492-runtime/`. This validates emitted code against
+staging on VM511; authenticated Vercel acceptance still needs the owner check.
+
+### Current preview settings inventory and owner action
+
+Project: `brian-barbers-projects/auto-parts-storev3` (existing project).
+Branch: `fix/roysauto-d1492-staging-acceptance`.
+URL: https://auto-parts-storev3-git-fix-roysau-0e57df-brian-barbers-projects.vercel.app/
+
+No settings were changed by agents. Anonymous root and API requests returned
+302 to Vercel SSO; authenticated hosted verification remains outstanding.
+The earlier owner request named `feat/roysauto-d1492-catalog`; its branch-scoped
+flag does not cover this branch. For the current preview, Brian must:
+
+1. Settings → Deployment Protection: confirm Vercel Authentication covers
+   Preview deployments and attach a screenshot to D1492.
+2. Settings → Environment Variables: confirm or add
+   `ROYS_CATALOG_PREVIEW_ENABLED=true`, environment **Preview**, Git branch
+   **fix/roysauto-d1492-staging-acceptance only**. Redeploy that branch after
+   saving, then check `/api/catalog?resource=years` while signed in.
+
+Do not create a duplicate variable if the correct scope already exists. Do not
+set it for all branches or Production. The original branch's setting is not
+changed by this request. If the API still returns plain text, capture its status
+and short response/error code plus the function log; do not expose cookies or
+tokens. If it returns the JSON activation message, verify this exact branch
+scope and redeployment. If it includes a Cloudflare reference, stop and pass the
+Ray ID to Brian. Main remains on hold under D1493.
