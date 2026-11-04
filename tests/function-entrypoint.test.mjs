@@ -57,7 +57,13 @@ async function withFunctionResponse(handler, run) {
 }
 
 function setEnvironment(values) {
-  const keys = ['VERCEL', 'VERCEL_ENV', 'ROYS_CATALOG_PREVIEW_ENABLED'];
+  const keys = [
+    'VERCEL',
+    'VERCEL_ENV',
+    'ROYS_CATALOG_PREVIEW_ENABLED',
+    'VERCEL_PROJECT_ID',
+    'VERCEL_GIT_COMMIT_REF',
+  ];
   const original = new Map(keys.map(key => [key, process.env[key]]));
   for (const key of keys) {
     if (values[key] === undefined) delete process.env[key];
@@ -72,7 +78,7 @@ function setEnvironment(values) {
   };
 }
 
-test('emitted Vercel catalog entrypoint loads and enforces preview access at runtime', async () => {
+test('emitted Vercel catalog entrypoint enforces the Preview and main-only Production gates', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'roys-catalog-function-'));
   const originalFetch = globalThis.fetch;
   const upstreamRequests = [];
@@ -118,14 +124,65 @@ test('emitted Vercel catalog entrypoint loads and enforces preview access at run
       VERCEL: '1',
       VERCEL_ENV: 'production',
       ROYS_CATALOG_PREVIEW_ENABLED: 'true',
+      VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p',
+      VERCEL_GIT_COMMIT_REF: 'main',
     });
     try {
       const response = await withFunctionResponse(handler, url => originalFetch(url));
-      assert.equal(response.status, 503);
+      assert.equal(response.status, 200);
       assert.match(response.headers.get('content-type') ?? '', /application\/json/i);
-      assert.match((await response.json()).error, /not been enabled/i);
-      assert.equal(upstreamRequests.length, 1, 'production must not call ERP');
+      assert.deepEqual(await response.json(), { years: [2020, 2021] });
+      assert.equal(upstreamRequests.length, 2);
+      assert.equal(upstreamRequests[1].url.origin, 'https://staging.autopartserp.com');
     } finally { restoreProductionEnv(); }
+
+    const blockedProductionCases = [
+      {
+        name: 'wrong Vercel project',
+        env: {
+          VERCEL: '1',
+          VERCEL_ENV: 'production',
+          ROYS_CATALOG_PREVIEW_ENABLED: 'true',
+          VERCEL_PROJECT_ID: 'prj_wrong',
+          VERCEL_GIT_COMMIT_REF: 'main',
+        },
+        code: 'CATALOG_DEPLOYMENT_NOT_ALLOWED',
+      },
+      {
+        name: 'wrong deployment branch',
+        env: {
+          VERCEL: '1',
+          VERCEL_ENV: 'production',
+          ROYS_CATALOG_PREVIEW_ENABLED: 'true',
+          VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p',
+          VERCEL_GIT_COMMIT_REF: 'feature/catalog',
+        },
+        code: 'CATALOG_DEPLOYMENT_NOT_ALLOWED',
+      },
+      {
+        name: 'missing activation flag',
+        env: {
+          VERCEL: '1',
+          VERCEL_ENV: 'production',
+          VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p',
+          VERCEL_GIT_COMMIT_REF: 'main',
+        },
+        code: 'CATALOG_FLAG_DISABLED',
+      },
+    ];
+
+    for (const blockedCase of blockedProductionCases) {
+      const restoreEnv = setEnvironment(blockedCase.env);
+      try {
+        const response = await withFunctionResponse(handler, url => originalFetch(url));
+        assert.equal(response.status, 503, `${blockedCase.name} should be blocked`);
+        assert.match(response.headers.get('content-type') ?? '', /application\/json/i);
+        const body = await response.json();
+        assert.equal(body.error, 'ERP staging catalog access has not been enabled for this deployment.');
+        assert.equal(body.code, blockedCase.code, `${blockedCase.name} should report its gate failure`);
+        assert.equal(upstreamRequests.length, 2, `${blockedCase.name} must not call ERP`);
+      } finally { restoreEnv(); }
+    }
   } finally {
     globalThis.fetch = originalFetch;
     await rm(tempDir, { recursive: true, force: true });

@@ -1,5 +1,11 @@
 # D1492 / WP-ROYS-1 — connect ERP to the original catalog
 
+Current activation policy: see [main catalog testing](main-catalog-testing.md).
+The earlier Preview-only restriction and main hold below are historical. PR #3
+promoted the reviewed catalog to main; Brian then requested fixing the main URL
+after configuring its Production activation flag. The follow-up allows only the
+existing project/main deployment to read ERP staging, with checkout disabled.
+
 Brian corrected the scope after the first preview: keep the existing design and
 single-page navigation from auto-parts-storev3.vercel.app. The replacement layout
 was removed. Header, TreeSidebar, PartsTable, ProductDetailModal and RightCartPanel
