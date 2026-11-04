@@ -1,63 +1,61 @@
-# RoysAuto by Autrex — catalog exploration
+# RoysAuto / Capital Auto Parts catalog exploration
 
-Canada/CAD first, with explicit market configuration for a future US/USD site.
-This React/Vite preview focuses on vehicle selection, part search, category
-navigation and application notes. Real catalog data comes from ERP staging.
+The existing single-page design is preserved: original red header, expanding
+vehicle tree, inline parts tables, product dialog and right-side Quick Cart.
+The active catalog now reads ERP staging instead of the prototype fixtures.
+Canada/CAD is enabled; future US/USD configuration remains explicit and disabled.
 
-## Run and validate
+## Local development and validation
 
-Node 22 is required. On a development machine: `npm ci`, then `npm run dev`.
-The Vite server serves the UI and the same read-only `/api/catalog` handler used
-by Vercel. No local environment file or database credential is needed. Upstream
-is fixed to `https://staging.autopartserp.com/api/v1`; requests identify this app
-honestly and forward neither user cookies nor authorization headers.
+Use Node 22. On a development machine, install dependencies with npm ci and start
+the Vite development server. The same read-only server adapter serves local Vite
+and the Vercel API function. No database connection string or credentials are
+needed. Requests use the fixed staging public API and an honest application UA.
 
-On VM510, do not install/build/test locally. Check `dev-remote --queue`, then use
-`agent-pre-push` (typecheck and tests on VM511). Run `npm run build` through
-`dev-remote --heavy`. Browser validation uses Firefox on VM511. The GitHub PR
-workflow repeats the dependency install, contract tests and production build.
+VM510 is orchestration only. Check dev-remote --queue before validation and use
+agent-pre-push for TypeScript and contract tests on VM511. Production builds and
+the scripts/browser-smoke.mjs Firefox check also run on VM511. The browser check
+uses real ERP data; it does not intercept or mock catalog responses.
 
-## Preview activation
+## What is connected
 
-Existing Vercel project: `brian-barbers-projects/auto-parts-storev3`.
-Existing public test alias: https://auto-parts-storev3.vercel.app.
-That alias still serves the previous app until a separately authorized release.
-Task PRs target `staging`; they are not production releases.
+- The original Year → Make → Model → Engine tree uses light-duty ERP references.
+- Categories load their mapped children only when expanded. Results render inline
+  beneath the chosen category, with pagination, brand and stock filters.
+- The header searches vehicles by year/make/model and parts by part number or
+  keyword. Enter submits a real server search; it does not just filter one page.
+- Full vehicle context and compound tree keys isolate different model years that
+  share an ERP model or engine ID. Late responses cannot replace newer results.
+- ERP string IDs, prices, availability, core charges, packs and application notes
+  reach the existing components. Missing prices/quality tiers are not fabricated.
+- Quick Cart and wishlist are browser-local test lists. Cart quantities persist
+  across reloads. Saved prices are estimates, not a checkout quote.
+- Account creation, payment/address capture, shipping/tax simulation and order
+  placement are disabled in the active catalog. Helcim is a later work package.
 
-Agents have no authorized Vercel account access. After the PR is open, Brian:
+Original prototype source remains for reference but mock-data.ts is no longer
+imported by the runtime API. There is no silent mock fallback after an API error.
+Tools, VIN lookup, order status and promotions are existing unconnected navigation
+placeholders; they are not claimed as implemented integrations.
 
-1. Open the project → **Settings → Deployment Protection**. Confirm **Vercel
-   Authentication** covers **Preview** deployments, and attach a screenshot to
-   D1492. Verify the exact preview root and `/api/catalog?resource=years` both
-   challenge an anonymous request.
-2. Open **Settings → Environment Variables**. Add the non-secret variable
-   `ROYS_CATALOG_PREVIEW_ENABLED` with value `true`, environment **Preview**,
-   branch **feat/roysauto-d1492-catalog** only. Redeploy that branch preview.
+## Deployment gate
 
-No new account/team/domain/credential is required. Do not configure Production
-variables. The API returns 503 unless this flag and `VERCEL_ENV=preview` are
-present on Vercel. The HTML and API are marked noindex; that is not authentication.
-A protected preview and an authenticated browser smoke are still required after
-activation. If staging returns 403, record the provided Cloudflare Ray ID and
-stop; never spoof a browser User-Agent or introduce retry loops.
+Existing project: brian-barbers-projects/auto-parts-storev3.
+Main alias: https://auto-parts-storev3.vercel.app.
+Protected task preview:
+https://auto-parts-storev3-git-feat-roysa-b611e6-brian-barbers-projects.vercel.app.
 
-## Data and UX boundaries
+Anonymous root and API requests to the task preview redirect to Vercel SSO.
+Agents have no authorized Vercel account access. Brian must confirm Preview
+Authentication in Settings → Deployment Protection (attach screenshot), then
+add ROYS_CATALOG_PREVIEW_ENABLED=true in Settings → Environment Variables,
+scoped to Preview and branch feat/roysauto-d1492-catalog only, and redeploy.
+The request is already on D1492; do not duplicate it or create credentials.
 
-- Vehicle options use ERP light-duty reference data. Year/make/model changes
-  clear dependent selections; the vehicle persists in browser storage.
-- Search supports keywords/part numbers, category, brand, part type, stock,
-  engine and remaining vehicle dimensions. URL state supports Back/Forward.
-- Application qualifiers stay visible. A model match is not a fitment guarantee.
-- CAD prices are displayed only when supplied by ERP; missing prices do not
-  become zero. Core charges and sellable-pack quantities remain separate.
-- Test carts save identifiers and quantities locally, not stale totals or
-  customer information. They create no orders, payments or reservations.
-- No active Shopify, login, simulated checkout or card/address capture flow.
-  Helcim checkout is a later, separately reviewed sandbox work package.
-- Original prototype components remain in the repository for reference but are
-  not mounted by this application. The old AWS API adapter is not used.
+The adapter requires VERCEL=1, VERCEL_ENV=preview and that flag. It stays disabled
+on Vercel Production, including main's public test alias. A main merge alone
+cannot activate ERP reads there. Changing the hosting scope requires an explicit
+configuration inventory and protection verification; no automatic public
+activation is included. HTML/API noindex directives are not access control.
 
-See [D1492 implementation scope](docs/catalog-exploration.md) for the settings
-inventory and production gaps. SEO-ready server-rendered product pages, stable
-market canonical URLs, measured load/latency targets, independent sellability,
-shipping/tax and checkout remain future work; this preview is not a launch.
+See docs/catalog-exploration.md for current evidence and remaining work.

@@ -5,6 +5,7 @@ import { once } from 'node:events';
 import { createCatalogHandler, previewEnabled, upstreamUrl } from '../server/catalog-proxy.ts';
 import { changeQuery, priceLabel, readCart, searchParams } from '../src/features/catalog/model.ts';
 import type { Part } from '../src/features/catalog/model.ts';
+import { mapErpPart, decodeCart, vehicleApi } from '../src/lib/erp-api.ts';
 
 test('upstream is fixed, bounded, read-only and explicitly independent of Shopify sellability', () => {
   const url = upstreamUrl('/api/catalog?resource=search&q=ALD1212M');
@@ -58,6 +59,40 @@ test('saved cart rejects malformed, duplicate and unsafe quantities; missing CAD
   assert.deepEqual(readCart('{"quantity":1}'), []);
   for (const pricing of [null, { price: null, currency: 'CAD' }, { price: 12, currency: 'USD' }]) assert.equal(priceLabel({ pricing } as Part), 'Price unavailable');
   assert.match(priceLabel({ pricing: { price: 28, currency: 'CAD' } } as Part), /28\.00/);
+});
+
+test('original UI adapter preserves ERP identity, application notes and missing-price semantics', () => {
+  const raw = { sku: 'BRAND_A_NUMBER_1', name: 'Brake pad', brand_name: 'Brand A', part_number: 'NUMBER_1', pricing: { price: null, currency: 'CAD' }, core_charge: { amount: 12 }, sellablePackQuantity: 2, fitment_qualifiers: [{ name: 'Position', value: 'Rear' }], applications: [{ submodel: 'LE', position: 'Rear', notes: ['Manual parking brake only'] }] } as Part;
+  const part = mapErpPart(raw);
+  assert.equal(part.id, raw.sku); assert.equal(part.price, null); assert.equal(part.tier, undefined);
+  assert.equal(part.coreCharge, 12); assert.equal(part.packQuantity, 2);
+  assert.match(part.applicationNotes![0], /LE.*Rear.*Manual parking brake/);
+  assert.notEqual(mapErpPart({ ...raw, sku: 'BRAND_B_NUMBER_1' }).id, part.id);
+  const item = { id: part.id, partId: part.id, quantity: 2, part };
+  assert.deepEqual(decodeCart(JSON.stringify({ items: [item, item, { ...item, quantity: -1 }] })).items, JSON.parse(JSON.stringify([item])));
+  assert.deepEqual(decodeCart('{broken').items, []);
+});
+
+test('engine requests carry the exact year, make and model through the original API interface', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: URL[] = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input), 'http://catalog.local'); requests.push(url);
+    switch (url.searchParams.get('resource')) {
+      case 'makes': return Response.json({ makes: [{ id: 76, name: 'Toyota' }] });
+      case 'models': return Response.json({ models: [{ id: 1011, name: 'Camry' }] });
+      case 'engines': return Response.json({ engines: [{ id: 17637, description: '2.5L 4-Cyl L' }] });
+      default: throw new Error('Unexpected resource');
+    }
+  };
+  try {
+    assert.deepEqual(await vehicleApi.getEngines(1011, 2020, 76), [{ id: 17637, name: '2.5L 4-Cyl L', modelId: 1011 }]);
+    const engine = requests.find(url => url.searchParams.get('resource') === 'engines')!;
+    assert.equal(engine.searchParams.get('year'), '2020');
+    assert.equal(engine.searchParams.get('make'), 'Toyota');
+    assert.equal(engine.searchParams.get('model'), 'Camry');
+    await assert.rejects(vehicleApi.getEngines(1011, 2020, 99));
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test('HTTP boundary blocks writes, preserves Cloudflare reference, never forwards caller credentials', async () => {

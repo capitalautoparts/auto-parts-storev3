@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useState } from "react";
 import { ShoppingCart, Menu, User, LogOut, Heart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,9 @@ import type { VehicleSearchResult, VehicleContext, Part } from "@/lib/api";
 
 interface HeaderProps {
   cartItemCount: number;
+  catalogPreview?: boolean;
+  onCatalogClick?: () => void;
+  onCartClick?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   onVehicleSearch?: (result: VehicleSearchResult) => void;
@@ -24,6 +28,8 @@ interface HeaderProps {
 
 export function Header({
   cartItemCount,
+  catalogPreview = false, onCatalogClick, onCartClick,
+  searchQuery,
   onVehicleSearch,
   onPartSearch,
   onCategorySearch,
@@ -34,11 +40,15 @@ export function Header({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [mobileWishlistOpen, setMobileWishlistOpen] = useState(false);
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated: signedIn, logout } = useAuth();
   const { items: wishlistItems, itemCount: wishlistItemCount, removeFromWishlist } = useWishlist();
 
+  const isAuthenticated = !catalogPreview && signedIn;
+  const openAccount = () => catalogPreview ? toast.info("Accounts are not enabled during catalog testing.") : setAuthModalOpen(true);
+  const focusSearch = () => document.getElementById("catalog-search")?.focus();
+
   return (
-    <header className="bg-brand-navy text-white shadow-lg animate-rise">
+    <header className="shrink-0 bg-brand-navy text-white shadow-lg animate-rise">
       <div className="border-b border-black/20">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
           {/* Mobile menu button */}
@@ -53,10 +63,10 @@ export function Header({
                 <SheetTitle className="text-white">Menu</SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-4 mt-6">
-                <button className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
+                <button onClick={() => { onCatalogClick?.(); setMobileMenuOpen(false); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
                   Part Catalog
                 </button>
-                <button className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
+                <button onClick={() => { setMobileMenuOpen(false); focusSearch(); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
                   Part Number Search
                 </button>
                 <button className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
@@ -111,7 +121,7 @@ export function Header({
                   <button
                     className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors"
                     onClick={() => {
-                      setAuthModalOpen(true);
+                      openAccount();
                       setMobileMenuOpen(false);
                     }}
                   >
@@ -155,7 +165,7 @@ export function Header({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <button className="hover:text-white hover:underline" onClick={() => setAuthModalOpen(true)}>
+              <button className="hover:text-white hover:underline" onClick={openAccount}>
                 Account
               </button>
             )}
@@ -171,14 +181,14 @@ export function Header({
               <WishlistPanel onAddToCart={onAddToCart} />
             </div>
             {/* Cart icon - hidden on mobile since we have floating button */}
-            <div className="hidden lg:flex flex-shrink-0 relative">
+            <button aria-label="Open Quick Cart" onClick={onCartClick} className="hidden lg:flex flex-shrink-0 relative">
               <ShoppingCart className="h-6 w-6" />
               {cartItemCount > 0 && (
                 <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs bg-white text-brand-navy font-bold">
                   {cartItemCount}
                 </Badge>
               )}
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -187,14 +197,15 @@ export function Header({
         <div className="container mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {/* Desktop nav buttons - hidden on mobile */}
           <div className="hidden lg:flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] font-semibold">
-            <button className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Part Catalog</button>
-            <button className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Part Number Search</button>
+            <button onClick={onCatalogClick} className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Part Catalog</button>
+            <button onClick={focusSearch} className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Part Number Search</button>
             <button className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Tools</button>
           </div>
 
           {/* Search bar - full width on mobile */}
           <div className="flex-1 max-w-xl w-full lg:mx-auto">
             <VehicleSearchBar
+              appliedQuery={searchQuery}
               onVehicleSelect={onVehicleSearch || (() => {})}
               onPartSelect={onPartSearch}
               onCategorySelect={onCategorySearch}
@@ -216,7 +227,7 @@ export function Header({
         </div>
       </div>
 
-      <AuthModal open={authModalOpen} onOpenChange={setAuthModalOpen} />
+      <AuthModal open={!catalogPreview && authModalOpen} onOpenChange={setAuthModalOpen} />
 
       {/* Mobile Wishlist Sheet */}
       <Sheet open={mobileWishlistOpen} onOpenChange={setMobileWishlistOpen}>

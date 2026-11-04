@@ -10,7 +10,7 @@ import type { Part } from "@/lib/api";
 
 interface PartsTableProps {
   parts: Part[];
-  onAddToCart: (partId: number) => void;
+  onAddToCart: (partId: string | number) => void;
 }
 
 const tierConfig = {
@@ -58,16 +58,16 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
   const positions = Object.keys(groupedParts).sort();
 
   return (
-    <div className="space-y-6 stagger-children">
+    <div className="space-y-6 stagger-children" data-testid="parts-table">
       {positions.map((position) => (
         <div key={position} className="animate-rise">
           <div className="flex items-center justify-between bg-[#a00a0a] text-white px-4 py-2 text-xs uppercase tracking-[0.25em] font-display">
             <span>{position}</span>
-            <span className="text-[10px] text-white/80">Price per item</span>
+            <span className="text-[10px] text-white/80">CAD / sellable unit</span>
           </div>
 
-          <div className="border border-border bg-white shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="border border-border bg-white shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
               <thead className="bg-secondary text-[11px] uppercase tracking-[0.2em] text-brand-ink">
                 <tr>
                   <th className="text-left px-3 py-2 w-16">Image</th>
@@ -80,13 +80,14 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
               </thead>
               <tbody>
                 {groupedParts[position].map((part, index) => {
-                  const tier = tierConfig[part.tier];
+                  const tier = (part.tier ? tierConfig[part.tier] : { label: "—", bgColor: "bg-secondary", textColor: "text-muted-foreground" });
                   const isInStock = part.stock > 0;
-                  const formattedPrice = part.price.toFixed(2);
+                  const formattedPrice = part.price === null ? "Price unavailable" : `${part.price === null ? "Price unavailable" : `$${part.price.toFixed(2)}`}`;
                   const isEvenRow = index % 2 === 0;
 
                   return (
                     <tr
+                      data-part-id={part.id}
                       key={part.id}
                       className={cn(
                         "border-b last:border-b-0",
@@ -128,8 +129,10 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                         </button>
                       </td>
 
-                      <td className="p-3 align-top">
+                      <td className="p-3 min-w-56 align-top">
                         <div className="text-sm mb-2">{part.description}</div>
+                        {part.packQuantity && part.packQuantity > 1 && <p className="text-xs">Pack of {part.packQuantity}</p>}
+                        {part.applicationNotes?.[0] && <p className="text-xs mb-2 line-clamp-2">{part.applicationNotes[0]} — check Details for all applications.</p>}
                         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                           {part.warranty && <span>Warranty: {part.warranty}</span>}
                           {part.position && <span>Position: {part.position}</span>}
@@ -145,7 +148,8 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                       </td>
 
                       <td className="p-3 w-24 text-right align-top">
-                        <div className="text-lg font-bold text-brand-ink">${formattedPrice}</div>
+                        <div className="text-lg font-bold text-brand-ink">{formattedPrice}</div>
+                        {part.coreCharge != null && <p className="text-xs">+ ${part.coreCharge.toFixed(2)} core</p>}
                       </td>
 
                       <td className="p-3 w-32 align-top">
@@ -153,7 +157,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                           <div className="flex gap-1">
                             <Button
                               onClick={() => onAddToCart(part.id)}
-                              disabled={!isInStock}
+                              disabled={part.price === null}
                               size="sm"
                               className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
                             >
