@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { DependencyList } from "react";
 
 export interface UseQueryResult<T> {
@@ -12,36 +12,25 @@ export function useQuery<T>(
   queryFn: () => Promise<T>,
   options?: { enabled?: boolean; deps?: DependencyList }
 ): UseQueryResult<T> {
-  const [data, setData] = useState<T | undefined>(undefined);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-
-  const fetchData = async () => {
-    if (options?.enabled === false) return;
-
-    setIsLoading(true);
-    setError(null);
-
+  const enabled = options?.enabled !== false;
+  const key = JSON.stringify([enabled, ...(options?.deps ?? [])]);
+  const latest = useRef(queryFn);
+  latest.current = queryFn;
+  const request = useRef(0);
+  const [state, setState] = useState<{ key: string; data?: T; isLoading: boolean; error: Error | null }>({ key, isLoading: enabled, error: null });
+  const refetch = useCallback(async () => {
+    const id = ++request.current;
+    if (!enabled) { setState({ key, isLoading: false, error: null }); return; }
+    setState({ key, isLoading: true, error: null });
     try {
-      const result = await queryFn();
-      setData(result);
+      const data = await latest.current();
+      if (id === request.current) setState({ key, data, isLoading: false, error: null });
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('An error occurred'));
-    } finally {
-      setIsLoading(false);
+      if (id === request.current) setState({ key, isLoading: false, error: err instanceof Error ? err : new Error('The catalog request failed.') });
     }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, [options?.enabled, ...(options?.deps ?? [])]);
-
-  return {
-    data,
-    isLoading,
-    error,
-    refetch: fetchData,
-  };
+  }, [key, enabled]);
+  useEffect(() => { void refetch(); return () => { request.current++; }; }, [refetch]);
+  return { data: state.key === key ? state.data : undefined, isLoading: state.key === key ? state.isLoading : enabled, error: state.key === key ? state.error : null, refetch };
 }
 
 export interface UseMutationResult<TVariables> {

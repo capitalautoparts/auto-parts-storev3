@@ -1,311 +1,122 @@
-import { useState, useMemo, useRef } from "react";
-import { Header } from "@/components/Header";
-import { PartsTable } from "@/components/PartsTable";
-import { RightCartPanel } from "@/components/RightCartPanel";
-import { TreeSidebar, type PartSelection, type TreeSidebarHandle, type VehicleExpansion } from "@/components/TreeSidebar";
-import { OrderConfirmationPage } from "@/pages/OrderConfirmationPage";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { toast, Toaster } from "sonner";
-import { Loader2, ShoppingCart } from "lucide-react";
-import { partsApi, cartApi, categoryApi, type VehicleSearchResult, type VehicleContext, type Part } from "@/lib/api";
-import { useQuery, useMutation } from "@/lib/hooks";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Header } from '@/components/Header';
+import { PartsTable } from '@/components/PartsTable';
+import { RightCartPanel } from '@/components/RightCartPanel';
+import { TreeSidebar, type PartSelection, type TreeSidebarHandle, type VehicleExpansion } from '@/components/TreeSidebar';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { toast, Toaster } from 'sonner';
+import { Loader2, ShoppingCart } from 'lucide-react';
+import { partsApi, cartApi, type VehicleContext, type VehicleSearchResult, type Part } from '@/lib/api';
+import { useQuery } from '@/lib/hooks';
+import { DIMENSIONS, safeStorage, saveStorage } from '@/features/catalog/model';
 
-type AppView = "catalog" | "confirmation";
+const VEHICLE_KEY = 'roysauto.original-vehicle.v1';
+function savedVehicle(): VehicleExpansion | null {
+  try {
+    const value = JSON.parse(safeStorage(VEHICLE_KEY) ?? 'null');
+    return value && ['year', 'makeId', 'modelId', 'engineId'].every(key => Number.isInteger(value[key]) && value[key] >= 0)
+      && ['makeName', 'modelName', 'engineName'].every(key => typeof value[key] === 'string' && value[key].length <= 120) ? value : null;
+  } catch { return null; }
+}
 
 export default function App() {
-  const [selectedEngineId, setSelectedEngineId] = useState<number>();
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number>();
   const [selectedFitment, setSelectedFitment] = useState<PartSelection | null>(null);
-  const [expandedVehicle, setExpandedVehicle] = useState<VehicleExpansion | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sessionId] = useState(() => `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const [expandedVehicle, setExpandedVehicle] = useState<VehicleExpansion | null>(savedVehicle);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [page, setPage] = useState(1);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
-  const [currentView, setCurrentView] = useState<AppView>("catalog");
-  const [completedOrderId, setCompletedOrderId] = useState<string>("");
-  const treeSidebarRef = useRef<TreeSidebarHandle>(null);
-
-  const handleVehicleSearch = (result: VehicleSearchResult) => {
-    // Expand tree to the selected vehicle
-    treeSidebarRef.current?.expandToVehicle(result);
-    // Clear the parts filter when navigating via search
-    setSearchQuery("");
-
-    // If a full vehicle with engine is selected, set the vehicle context for category search
-    if (result.year && result.makeId && result.makeName && result.modelId && result.modelName && result.engineId && result.engineName) {
-      setExpandedVehicle({
-        year: result.year,
-        makeId: result.makeId,
-        makeName: result.makeName,
-        modelId: result.modelId,
-        modelName: result.modelName,
-        engineId: result.engineId,
-        engineName: result.engineName,
-      });
-    }
-
-    toast.success(`Expanded to ${result.label}`);
-  };
-
-  const handlePartSearch = (result: VehicleSearchResult) => {
-    // For part search, we could filter or highlight
-    if (result.partNumber) {
-      setSearchQuery(result.partNumber);
-      toast.info(`Filtering by part number: ${result.partNumber}`);
-    }
-  };
-
-  const handleCategorySearch = (result: VehicleSearchResult) => {
-    // When searching for categories within vehicle context
-    if (result.categoryId) {
-      // Use the tree's expandToCategory to expand the tree and select the category
-      treeSidebarRef.current?.expandToCategory(result);
-      toast.success(`Showing ${result.categoryName || 'parts'}`);
-    }
-  };
-
-  // Build vehicle context from selected fitment or expanded vehicle for context-aware search
-  const vehicleContext: VehicleContext | null = selectedFitment ? {
-    year: selectedFitment.year,
-    makeId: selectedFitment.make.id,
-    makeName: selectedFitment.make.name,
-    modelId: selectedFitment.model.id,
-    modelName: selectedFitment.model.name,
-    engineId: selectedFitment.engine.id,
-    engineName: selectedFitment.engine.name,
-  } : expandedVehicle ? {
-    year: expandedVehicle.year,
-    makeId: expandedVehicle.makeId,
-    makeName: expandedVehicle.makeName,
-    modelId: expandedVehicle.modelId,
-    modelName: expandedVehicle.modelName,
-    engineId: expandedVehicle.engineId,
-    engineName: expandedVehicle.engineName,
-  } : null;
-
-  const handleVehicleExpand = (vehicle: VehicleExpansion) => {
-    setExpandedVehicle(vehicle);
-  };
-
-  const { data: categoriesData } = useQuery(() => categoryApi.getAll());
-
-  const { data: partsData, isLoading: partsLoading } = useQuery(
-    () => partsApi.getByCategory(selectedCategoryId!, selectedEngineId),
-    { enabled: !!selectedCategoryId && !!selectedEngineId, deps: [selectedCategoryId, selectedEngineId] }
+  const tree = useRef<TreeSidebarHandle>(null);
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!restored.current && expandedVehicle) tree.current?.expandToVehicle({ type: 'vehicle', label: '', ...expandedVehicle });
+    restored.current = true;
+  }, [expandedVehicle]);
+  const vehicleContext = useMemo<VehicleContext | null>(() => selectedFitment ? {
+    year: selectedFitment.year, makeId: selectedFitment.make.id, makeName: selectedFitment.make.name,
+    modelId: selectedFitment.model.id, modelName: selectedFitment.model.name,
+    engineId: selectedFitment.engine.id, engineName: selectedFitment.engine.name,
+  } : expandedVehicle, [selectedFitment, expandedVehicle]);
+  const scopedCategory = searchQuery ? undefined : selectedFitment?.category;
+  const { data, isLoading, error, refetch } = useQuery(
+    () => partsApi.search({ q: searchQuery || undefined, category: scopedCategory, vehicle: vehicleContext, page, filters }),
+    { enabled: !!scopedCategory || searchQuery.trim().length >= 2, deps: [scopedCategory?.slug, vehicleContext, searchQuery, page, filters] },
   );
+  const { data: cart, refetch: refreshCart } = useQuery(() => cartApi.get('catalog-test'));
 
-  const { data: cartData, refetch: refetchCart } = useQuery(() => cartApi.get(sessionId));
-
-  const addToCartMutation = useMutation(
-    ({ partId, quantity }: { partId: number; quantity: number }) =>
-      cartApi.addItem(sessionId, partId, quantity),
-    {
-      onSuccess: () => {
-        refetchCart();
-        toast.success("Added to cart!");
-      },
-      onError: (error) => {
-        toast.error(`Failed to add to cart: ${error.message}`);
-      },
-    }
-  );
-
-  const updateQuantityMutation = useMutation(
-    ({ itemId, quantity }: { itemId: number; quantity: number }) =>
-      cartApi.updateQuantity(itemId, quantity),
-    {
-      onSuccess: () => {
-        refetchCart();
-      },
-    }
-  );
-
-  const removeItemMutation = useMutation(
-    (itemId: number) => cartApi.removeItem(itemId),
-    {
-      onSuccess: () => {
-        refetchCart();
-        toast.success("Removed from cart");
-      },
-    }
-  );
-
-  const breadcrumb = useMemo(() => {
-    if (!selectedFitment || !categoriesData) return "";
-
-    const category = categoriesData.find((c) => c.id === selectedFitment.category.id);
-    const parent = category?.parentId ? categoriesData.find((c) => c.id === category.parentId) : null;
-    const categoryLabel = parent ? `${parent.name} > ${category?.name ?? selectedFitment.category.name}` : selectedFitment.category.name;
-    const vehicleLabel = `${selectedFitment.year} ${selectedFitment.make.name} ${selectedFitment.model.name}`;
-
-    return `${vehicleLabel} > ${selectedFitment.engine.name} > ${categoryLabel}`;
-  }, [selectedFitment, categoriesData]);
-
-  const filteredParts = useMemo(() => {
-    if (!partsData) return [];
-    if (!searchQuery.trim()) return partsData;
-
-    const query = searchQuery.toLowerCase();
-    return partsData.filter((part) => {
-      const searchable = [
-        part.brand,
-        part.partNumber,
-        part.description,
-        part.position,
-        part.warranty,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return searchable.includes(query);
-    });
-  }, [partsData, searchQuery]);
-
-  const handlePartTypeSelect = (selection: PartSelection) => {
-    setSelectedCategoryId(selection.category.id);
-    setSelectedEngineId(selection.engine.id);
-    setSelectedFitment(selection);
-  };
-
-  const handleAddToCart = (partId: number) => {
-    addToCartMutation.mutate({ partId, quantity: 1 });
-  };
-
-  const handleAddPartToCart = (part: Part) => {
-    handleAddToCart(part.id);
-  };
-
-  const handleUpdateQuantity = (itemId: number, quantity: number) => {
-    updateQuantityMutation.mutate({ itemId, quantity });
-  };
-
-  const handleRemoveItem = (itemId: number) => {
-    removeItemMutation.mutate(itemId);
-  };
-
-  const handleCheckout = () => {
-    // Generate order ID and show confirmation
-    const orderId = `CAP-${Date.now().toString(36).toUpperCase()}`;
-    setCompletedOrderId(orderId);
-    setMobileCartOpen(false);
-    setCurrentView("confirmation");
-    toast.success("Order placed successfully!");
-  };
-
-  const handleContinueShopping = () => {
-    setCurrentView("catalog");
-    setCompletedOrderId("");
-  };
-
-  // Render confirmation page after order
-  if (currentView === "confirmation") {
-    return (
-      <>
-        <Toaster />
-        <OrderConfirmationPage
-          orderId={completedOrderId}
-          onContinueShopping={handleContinueShopping}
-        />
-      </>
-    );
+  function resetResults() { setFilters({}); setPage(1); }
+  function selectPartType(selection: PartSelection) {
+    setSelectedFitment(selection); setSearchQuery(''); resetResults();
   }
-
-  // Default: catalog view
-  return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <Toaster />
-      <Header
-        cartItemCount={cartData?.items?.length || 0}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onVehicleSearch={handleVehicleSearch}
-        onPartSearch={handlePartSearch}
-        onCategorySearch={handleCategorySearch}
-        vehicleContext={vehicleContext}
-        onAddToCart={handleAddPartToCart}
-      />
-
-      <div className="flex-1 flex flex-row overflow-hidden">
-        {/* Main Content Area - Tree with inline parts */}
-        <div className="flex-1 overflow-auto p-4">
-          <TreeSidebar
-            ref={treeSidebarRef}
-            onPartTypeSelect={handlePartTypeSelect}
-            onVehicleExpand={handleVehicleExpand}
-            renderPartsInline={() => (
-              <div className="border-t border-border pt-4">
-                {breadcrumb && (
-                  <div className="mb-4 py-3 animate-rise">
-                    <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                      Selected fitment
-                    </div>
-                    <div className="mt-1 font-semibold text-base text-foreground">
-                      {breadcrumb}
-                    </div>
-                    {searchQuery && (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        Filtering by "{searchQuery}"
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {partsLoading ? (
-                  <div className="flex items-center justify-center h-64">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  </div>
-                ) : filteredParts.length > 0 ? (
-                  <PartsTable parts={filteredParts} onAddToCart={handleAddToCart} />
-                ) : (
-                  <div className="p-12 text-center">
-                    <p className="text-muted-foreground">
-                      {searchQuery
-                        ? "No parts match that search. Try a different keyword."
-                        : "No parts found for this category and vehicle combination."}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          />
-        </div>
-
-        {/* Cart Sidebar - hidden on mobile */}
-        <div className="hidden lg:block">
-          <RightCartPanel
-            items={cartData?.items || []}
-            onUpdateQuantity={handleUpdateQuantity}
-            onRemoveItem={handleRemoveItem}
-            onCheckout={handleCheckout}
-          />
-        </div>
+  function expandVehicle(vehicle: VehicleExpansion) {
+    setExpandedVehicle(vehicle); setSelectedFitment(null); setSearchQuery(''); resetResults();
+    if (!saveStorage(VEHICLE_KEY, JSON.stringify(vehicle))) toast.info('Your vehicle could not be saved in this browser.');
+  }
+  function textSearch(query: string) { setSearchQuery(query.trim()); resetResults(); }
+  function vehicleSearch(result: VehicleSearchResult) {
+    tree.current?.expandToVehicle(result);
+    setSelectedFitment(null); setExpandedVehicle(null); setSearchQuery(''); resetResults();
+  }
+  async function changeCart(action: () => Promise<unknown>, message?: string) {
+    try { await action(); await refreshCart(); if (message) toast.success(message); }
+    catch (error) { toast.error((error as Error).message); }
+  }
+  const addToCart = (partId: string | number, part?: Part) => void changeCart(() => cartApi.addItem('catalog-test', partId, 1, part), 'Added to test cart');
+  const cartProps = {
+    items: cart?.items ?? [], catalogPreview: true,
+    onUpdateQuantity: (id: string | number, quantity: number) => void changeCart(() => cartApi.updateQuantity(id, quantity)),
+    onRemoveItem: (id: string | number) => void changeCart(() => cartApi.removeItem(id)),
+    onCheckout: () => toast.info('Checkout is disabled during catalog testing.'),
+  };
+  const changeFilter = (key: string, value: string) => { setFilters(current => ({ ...current, [key]: value })); setPage(1); };
+  const renderParts = () => <section className="border-t border-border pt-4 min-w-0" data-testid="inline-parts" aria-label="Catalog results" aria-busy={isLoading}>
+    <div className="mb-4 py-3">
+      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{searchQuery ? 'Part search' : 'Selected fitment'}</div>
+      <div className="mt-1 font-semibold text-base text-foreground">
+        {vehicleContext ? `${vehicleContext.year} ${vehicleContext.makeName} ${vehicleContext.modelName} > ${vehicleContext.engineName ?? 'All engines'}` : 'All vehicles'}
+        {scopedCategory ? ` > ${scopedCategory.name}` : searchQuery ? ` > ${searchQuery}` : ''}
       </div>
-
-      {/* Mobile Cart Button - fixed at bottom right */}
-      <div className="lg:hidden fixed bottom-4 right-4 z-50">
-        <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
-          <SheetTrigger asChild>
-            <Button className="rounded-full h-14 w-14 bg-brand-navy shadow-lg hover:bg-brand-navy/90 relative">
-              <ShoppingCart className="h-6 w-6" />
-              {(cartData?.items?.length || 0) > 0 && (
-                <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-brand-gold text-brand-ink">
-                  {cartData?.items?.length}
-                </Badge>
-              )}
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="right" className="w-full sm:max-w-md p-0">
-            <RightCartPanel
-              items={cartData?.items || []}
-              onUpdateQuantity={handleUpdateQuantity}
-              onRemoveItem={handleRemoveItem}
-              onCheckout={handleCheckout}
-            />
-          </SheetContent>
-        </Sheet>
-      </div>
+      <p className="mt-1 text-xs text-muted-foreground">Check engine, submodel, position and application notes before choosing a part.</p>
     </div>
-  );
+    <div className="flex flex-wrap gap-3 mb-3 text-xs">
+      <label>Brand<select aria-label="Brand" className="block border rounded p-1 max-w-48 bg-white" value={filters.brand ?? ''} onChange={event => changeFilter('brand', event.target.value)}><option value="">All brands</option>{data?.facets?.brands?.map(brand => <option key={brand.brand_id} value={brand.brand_id}>{brand.name}</option>)}</select></label>
+      {data?.vehicle_dimensions?.filter(dimension => DIMENSIONS.includes(dimension.dimension as typeof DIMENSIONS[number]) && dimension.dimension !== 'engine_base_id').map(dimension => <label key={dimension.dimension}>{dimension.label}<select aria-label={dimension.label} className="block border rounded p-1 bg-white" value={filters[dimension.dimension] ?? ''} onChange={event => changeFilter(dimension.dimension, event.target.value)}><option value="">All — check application</option>{dimension.options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>)}
+      <label className="flex items-center gap-1"><input type="checkbox" checked={filters.in_stock_only === 'true'} onChange={event => changeFilter('in_stock_only', event.target.checked ? 'true' : '')} />In stock only</label>
+      <button className="underline" onClick={() => { setFilters({}); setPage(1); }}>Clear filters</button>
+    </div>
+    {isLoading ? <div role="status" className="flex items-center justify-center h-40 gap-2"><Loader2 className="h-6 w-6 animate-spin" />Loading ERP parts…</div>
+      : error ? <div role="alert" className="p-4 text-red-700">{error.message}<button onClick={refetch} className="underline ml-2">Retry</button></div>
+      : data?.parts.length ? <><p className="mb-3 text-xs text-muted-foreground" role="status">{data.pagination.total_is_exact === false ? 'At least ' : ''}{data.pagination.total} matching parts · CAD</p><PartsTable parts={data.parts} onAddToCart={addToCart} /></>
+      : <p className="p-8 text-sm text-muted-foreground">No parts match this vehicle and selection. Try another category or remove a filter.</p>}
+    {data && <div className="flex justify-center items-center gap-4 my-4 text-sm"><Button variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button><span>Page {page}</span><Button variant="outline" disabled={!data.pagination.has_more || page >= 100} onClick={() => setPage(page + 1)}>Next</Button></div>}
+  </section>;
+
+  return <div className="h-dvh flex flex-col bg-background overflow-hidden">
+    <Toaster />
+    <Header cartItemCount={cart?.items.reduce((count, item) => count + item.quantity, 0) ?? 0} searchQuery={searchQuery}
+      onSearchChange={textSearch} onVehicleSearch={vehicleSearch} onPartSearch={result => textSearch(result.partNumber ?? '')}
+      onCategorySearch={result => tree.current?.expandToCategory(result)} vehicleContext={vehicleContext}
+      onAddToCart={part => addToCart(part.id, part)} catalogPreview
+      onCatalogClick={() => { setSearchQuery(''); resetResults(); }} onCartClick={() => setMobileCartOpen(true)} />
+    <div className="shrink-0 px-4 py-1 border-b text-xs text-muted-foreground flex flex-wrap items-center gap-3">
+      <span>Catalog test · Canada / CAD · ERP staging · Checkout disabled</span>
+      {vehicleContext && <span>{vehicleContext.year} {vehicleContext.makeName} {vehicleContext.modelName}</span>}
+    </div>
+    <div className="flex-1 flex flex-row overflow-hidden">
+      <main className="flex-1 min-w-0 overflow-auto p-4">
+        {searchQuery && <div className="mb-6">{renderParts()}<button className="text-sm underline my-3" onClick={() => textSearch('')}>Return to vehicle catalog</button></div>}
+        <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleExpand={expandVehicle}
+          renderPartsInline={() => !searchQuery && selectedFitment ? renderParts() : null} />
+      </main>
+      <aside className="hidden lg:block" aria-label="Quick Cart"><RightCartPanel {...cartProps} /></aside>
+    </div>
+    <div className="lg:hidden fixed bottom-4 right-4 z-50">
+      <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
+        <SheetTrigger asChild><Button aria-label="Open Quick Cart" className="rounded-full h-14 w-14 bg-brand-navy shadow-lg hover:bg-brand-navy/90 relative"><ShoppingCart className="h-6 w-6" />{(cart?.items.length ?? 0) > 0 && <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-brand-gold text-brand-ink">{cart?.items.length}</Badge>}</Button></SheetTrigger>
+        <SheetContent side="right" className="w-full sm:max-w-md p-0 overflow-auto bg-white"><SheetHeader className="sr-only"><SheetTitle>Quick Cart</SheetTitle></SheetHeader><RightCartPanel {...cartProps} /></SheetContent>
+      </Sheet>
+    </div>
+  </div>;
 }

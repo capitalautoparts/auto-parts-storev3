@@ -3,6 +3,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -12,12 +13,13 @@ import { WishlistButton } from "./wishlist/WishlistButton";
 import { ShoppingCart, Check, FileText, ExternalLink, Package, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Part } from "@/lib/api";
+import { availabilitySummary } from "@/lib/availability";
 
 interface ProductDetailModalProps {
   part: Part | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddToCart: (partId: number) => void;
+  onAddToCart: (partId: string | number) => void;
 }
 
 const tierConfig = {
@@ -51,8 +53,8 @@ export function ProductDetailModal({
 }: ProductDetailModalProps) {
   if (!part) return null;
 
-  const tier = tierConfig[part.tier];
-  const isInStock = part.stock > 0;
+  const tier = (part.tier ? tierConfig[part.tier] : { label: "—", bgColor: "bg-secondary", textColor: "text-muted-foreground" });
+  const availability = availabilitySummary(part);
 
   const handleAddToCart = () => {
     onAddToCart(part.id);
@@ -61,7 +63,7 @@ export function ProductDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0 overflow-hidden bg-white shadow-2xl border-0">
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto p-0 bg-white shadow-2xl border-0">
         {/* Header bar */}
         <div className="bg-[#a00a0a] text-white px-4 py-3">
           <DialogHeader>
@@ -78,18 +80,19 @@ export function ProductDetailModal({
                 {tier.label}
               </Badge>
             </DialogTitle>
+            <DialogDescription className="text-white/90 text-xs">Review all application conditions; a vehicle match is not a fitment guarantee.</DialogDescription>
           </DialogHeader>
         </div>
 
         <div className="p-4 bg-white">
           {/* Product info section */}
-          <div className="flex gap-4 mb-4">
+          <div className="flex flex-wrap gap-4 mb-4">
             {/* Image - smaller and to the left */}
             <div className="flex-shrink-0">
               <ProductImage
                 src={part.imageUrl}
                 alt={`${part.brand} ${part.partNumber}`}
-                className="w-32 h-32 border rounded"
+                className="w-20 h-20 sm:w-32 sm:h-32 border rounded"
               />
             </div>
 
@@ -98,23 +101,19 @@ export function ProductDetailModal({
               <p className="text-sm text-muted-foreground mb-2">{part.description}</p>
 
               <div className="flex items-baseline gap-2 mb-3">
-                <span className="text-2xl font-bold text-brand-ink">${part.price.toFixed(2)}</span>
-                <span className="text-sm text-muted-foreground">each</span>
+                <span className="text-2xl font-bold text-brand-ink">{part.price === null ? "Price unavailable" : `$${part.price.toFixed(2)}`}</span>
+                <span className="text-sm text-muted-foreground">CAD · {part.packQuantity && part.packQuantity > 1 ? `pack of ${part.packQuantity}` : "sellable unit"}</span>
               </div>
 
               {/* Stock and warranty */}
               <div className="space-y-1 text-sm">
                 <div className="flex items-center gap-2">
-                  {isInStock ? (
-                    <>
-                      <Check className="h-4 w-4 text-emerald-600" />
-                      <span className="text-emerald-600 font-medium">
-                        In Stock ({part.stock} available)
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-rose-600 font-medium">Out of Stock</span>
-                  )}
+                  {availability.confirmedStock && <Check className="h-4 w-4 text-emerald-600" />}
+                  <span data-testid="part-availability" className={cn("font-medium",
+                    availability.tone === 'positive' ? "text-emerald-600" : availability.tone === 'negative' ? "text-rose-600" : "text-muted-foreground") }>
+                    {availability.label}
+                    {availability.confirmedStock && Number.isFinite(part.stock) && part.stock > 0 ? ` (${part.stock} available)` : ''}
+                  </span>
                 </div>
                 {part.warranty && (
                   <div className="text-muted-foreground">
@@ -133,7 +132,7 @@ export function ProductDetailModal({
             <div className="flex flex-col gap-2">
               <Button
                 onClick={handleAddToCart}
-                disabled={!isInStock}
+                disabled={part.price === null}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <ShoppingCart className="h-4 w-4 mr-2" />
@@ -143,9 +142,10 @@ export function ProductDetailModal({
             </div>
           </div>
 
+          {part.coreCharge != null && <p className="text-sm mb-3">Additional core charge: ${part.coreCharge.toFixed(2)} CAD</p>}
           {/* Tabbed content - more compact */}
           <Tabs defaultValue="specs" className="border rounded-lg overflow-hidden">
-            <TabsList className="w-full justify-start rounded-none border-b bg-gray-100 p-0 h-auto">
+            <TabsList className="w-full justify-start overflow-x-auto rounded-none border-b bg-gray-100 p-0 h-auto">
               <TabsTrigger
                 value="specs"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-brand-navy data-[state=active]:bg-white px-4 py-2 text-sm"
@@ -238,6 +238,7 @@ export function ProductDetailModal({
               </TabsContent>
 
               <TabsContent value="fitments" className="m-0 p-0 bg-white">
+                <div className="p-3 text-sm"><strong>Application notes</strong>{part.applicationNotes?.length ? part.applicationNotes.map((note, index) => <p className="py-2 border-b" key={index}>{note}</p>) : <p>No application notes supplied. Verify fitment before purchase.</p>}</div>
                 {part.fitments && part.fitments.length > 0 ? (
                   <table className="w-full text-sm">
                     <thead className="bg-gray-100 sticky top-0">
