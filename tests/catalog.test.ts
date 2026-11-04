@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createCatalogHandler, previewEnabled, upstreamUrl } from '../server/catalog-proxy.ts';
+import { catalogEnabled, createCatalogHandler, upstreamUrl } from '../server/catalog-proxy.ts';
 import { catalogFetch, changeQuery, priceLabel, readCart, searchParams } from '../src/features/catalog/model.ts';
 import type { Part } from '../src/features/catalog/model.ts';
 import { mapErpPart, decodeCart, vehicleApi, cartApi } from '../src/lib/erp-api.ts';
@@ -121,23 +121,73 @@ test('upstream is fixed, bounded, read-only and explicitly independent of Shopif
     'resource=search&q=pad&in_stock_only=purchasable']) assert.throws(() => upstreamUrl(`/?${query}`));
 });
 
-test('deployment access fails closed outside an explicitly enabled Vercel preview', () => {
-  assert.equal(previewEnabled({ VERCEL: '1', VERCEL_ENV: 'production', ROYS_CATALOG_PREVIEW_ENABLED: 'true' }), false);
-  assert.equal(previewEnabled({ VERCEL: '1', VERCEL_ENV: 'preview' }), false);
-  assert.equal(previewEnabled({ VERCEL: '1', VERCEL_ENV: 'preview', ROYS_CATALOG_PREVIEW_ENABLED: 'true' }), true);
-  assert.equal(previewEnabled({}), false);
+test('catalog activation allows enabled previews and only the designated production project main branch', () => {
+  const enabledFlag = { ROYS_CATALOG_PREVIEW_ENABLED: 'true' };
+  assert.equal(catalogEnabled({ VERCEL: '1', VERCEL_ENV: 'preview', ...enabledFlag }), true);
+  assert.equal(catalogEnabled({
+    VERCEL: '1', VERCEL_ENV: 'production', ...enabledFlag,
+    VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p', VERCEL_GIT_COMMIT_REF: 'main',
+  }), true);
+
+  const deniedDeployments: NodeJS.ProcessEnv[] = [
+    {},
+    { VERCEL: '1', VERCEL_ENV: 'preview' },
+    { VERCEL: '1', VERCEL_ENV: 'production', ...enabledFlag },
+    { VERCEL: '1', VERCEL_ENV: 'production', ...enabledFlag, VERCEL_PROJECT_ID: 'another-project', VERCEL_GIT_COMMIT_REF: 'main' },
+    { VERCEL: '1', VERCEL_ENV: 'production', ...enabledFlag, VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p', VERCEL_GIT_COMMIT_REF: 'staging' },
+    { VERCEL: '1', VERCEL_ENV: 'production', ...enabledFlag, VERCEL_GIT_COMMIT_REF: 'main' },
+    { VERCEL: '1', VERCEL_ENV: 'production', ...enabledFlag, VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p' },
+    { VERCEL_ENV: 'production', ...enabledFlag, VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p', VERCEL_GIT_COMMIT_REF: 'main' },
+    { VERCEL: '1', VERCEL_ENV: 'preview', ROYS_CATALOG_PREVIEW_ENABLED: 'TRUE' },
+  ];
+  for (const env of deniedDeployments) assert.equal(catalogEnabled(env), false);
 });
 
-test('a default deployed handler never calls ERP without activation, including missing platform variables', async () => {
-  let called = false;
-  const server = createServer(createCatalogHandler(async () => { called = true; return Response.json({}); }, {})).listen(0, '127.0.0.1');
+test('a denied deployment returns a stable error and never calls ERP', async () => {
+  const envs: NodeJS.ProcessEnv[] = [
+    {},
+    { VERCEL: '1', VERCEL_ENV: 'production', VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p', VERCEL_GIT_COMMIT_REF: 'main' },
+    { VERCEL: '1', VERCEL_ENV: 'production', ROYS_CATALOG_PREVIEW_ENABLED: 'true', VERCEL_PROJECT_ID: 'other-project', VERCEL_GIT_COMMIT_REF: 'main' },
+  ];
+  for (const env of envs) {
+    let called = false;
+    const server = createServer(createCatalogHandler(async () => { called = true; return Response.json({}); }, env)).listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    try {
+      const response = await fetch(`http://127.0.0.1:${address.port}/?resource=years`);
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), {
+        error: 'ERP staging catalog access has not been enabled for this deployment.',
+        code: env.ROYS_CATALOG_PREVIEW_ENABLED === 'true' ? 'CATALOG_DEPLOYMENT_NOT_ALLOWED' : 'CATALOG_FLAG_DISABLED',
+      });
+      assert.equal(called, false);
+    } finally { server.close(); server.closeAllConnections(); }
+  }
+});
+
+test('the eligible production deployment can only make GET requests to the fixed ERP staging origin', async () => {
+  const calls: { url: URL; init?: RequestInit }[] = [];
+  const productionEnv = {
+    VERCEL: '1', VERCEL_ENV: 'production', ROYS_CATALOG_PREVIEW_ENABLED: 'true',
+    VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p', VERCEL_GIT_COMMIT_REF: 'main',
+  };
+  const server = createServer(createCatalogHandler(async (input, init) => {
+    calls.push({ url: new URL(String(input)), init });
+    return Response.json({ years: [2020] });
+  }, productionEnv)).listen(0, '127.0.0.1');
   await once(server, 'listening');
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   try {
-    const response = await fetch(`http://127.0.0.1:${address.port}/?resource=years`);
-    assert.equal(response.status, 503);
-    assert.equal(called, false);
+    const response = await fetch(`http://127.0.0.1:${address.port}/?resource=years`, { method: 'GET' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { years: [2020] });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url.origin, 'https://staging.autopartserp.com');
+    assert.equal(calls[0].init?.method ?? 'GET', 'GET');
+    assert.equal(calls[0].init?.redirect, 'error');
   } finally { server.close(); server.closeAllConnections(); }
 });
 

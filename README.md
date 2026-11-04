@@ -38,28 +38,37 @@ There is no silent mock fallback after an API error.
 Tools, VIN lookup, order status and promotions are existing unconnected navigation
 placeholders; they are not claimed as implemented integrations.
 
-## Deployment gate
+## Deployment activation
 
 Existing project: brian-barbers-projects/auto-parts-storev3.
 Main alias: https://auto-parts-storev3.vercel.app.
 Protected task preview:
 https://auto-parts-storev3-git-fix-roysau-0e57df-brian-barbers-projects.vercel.app.
 
-Anonymous root and API requests to the task preview redirect to Vercel SSO.
-Agents have no authorized Vercel account access. Brian must confirm Preview
-Authentication in Settings → Deployment Protection (attach screenshot), then
-add ROYS_CATALOG_PREVIEW_ENABLED=true in Settings → Environment Variables,
-scoped to Preview and branch fix/roysauto-d1492-staging-acceptance only if absent,
-and redeploy that branch. The earlier D1492 request named the original
-feat/roysauto-d1492-catalog branch; that scope does not enable this follow-up.
-Check the current D1492 owner-action note before repeating a request. Do not
-create credentials or enable the flag for all branches or Production.
+Brian requested main testing and reported setting ROYS_CATALOG_PREVIEW_ENABLED
+in Vercel Production. The adapter now supports that existing test URL. It always
+requires VERCEL=1 and ROYS_CATALOG_PREVIEW_ENABLED=true (exact lowercase text):
 
-The adapter requires VERCEL=1, VERCEL_ENV=preview and that flag. It stays disabled
-on Vercel Production, including main's public test alias. A main merge alone
-cannot activate ERP reads there. Changing the hosting scope requires an explicit
-configuration inventory and protection verification; no automatic public
-activation is included. HTML/API noindex directives are not access control.
+- Preview deployments keep their existing activation behavior and protection.
+- Production is accepted only with VERCEL_PROJECT_ID equal to
+  prj_MDoqEvUIZHzv65GCFYxLE03xVt2p and VERCEL_GIT_COMMIT_REF equal to main.
+- Other environments, projects, branches and missing/false flags fail closed.
+
+Vercel supplies project and branch identity as system environment variables.
+The exception does not use caller-supplied headers or a configurable backend URL.
+Vercel Production here still reads only https://staging.autopartserp.com;
+it does not select the production ERP database. Checkout stays disabled.
+This makes catalog data publicly readable on the existing main test alias when
+the flag is enabled and that alias is public. Noindex is not access control.
+
+Agents changed no Vercel settings and have no authorized Vercel account access.
+Use the existing Production flag Brian already configured; no new credentials,
+domains or settings are required by this patch. Do not manually override Vercel's
+system identity variables. The normal Git deployment after promotion to main
+picks up the configured flag. If disabled, the API returns JSON 503 with
+CATALOG_FLAG_DISABLED; if the platform identity is not allowed, it returns
+CATALOG_DEPLOYMENT_NOT_ALLOWED. Neither diagnostic exposes environment values.
+Removing or setting the flag to false and redeploying disables ERP reads.
 
 See docs/catalog-exploration.md for current evidence and remaining work.
 
@@ -80,4 +89,4 @@ emitted Node function. `npm test` includes an isolated emitted-entrypoint test;
 source-only Vite tests cannot establish that the packaged function starts.
 For manual VM511 browser acceptance, `ROYS_SMOKE_FUNCTION_ENTRYPOINT` can point
 to the packaged `api/catalog.js`; the smoke then serves built assets with that
-function and requires the normal Preview activation variables.
+function and requires the normal Preview or approved-main activation variables.
