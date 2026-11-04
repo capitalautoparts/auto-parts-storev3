@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const ORIGIN = 'https://staging.autopartserp.com';
 const USER_AGENT = 'RoysAuto-Catalog-Preview/1.0 (+Autrex; staging read-only)';
+const MAIN_TEST_PROJECT_ID = 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p';
 const vehicleKeys = ['year', 'make', 'model'];
 const searchKeys = ['q', ...vehicleKeys, 'engine_base_id', 'sub_model_id', 'drive_type_id',
   'body_style_config_id', 'transmission_id', 'region_id', 'category', 'part_type', 'brand',
@@ -61,8 +62,14 @@ export function upstreamUrl(input: string): URL {
   return url;
 }
 
-export function previewEnabled(env: NodeJS.ProcessEnv): boolean {
-  return env.VERCEL === '1' && env.VERCEL_ENV === 'preview' && env.ROYS_CATALOG_PREVIEW_ENABLED === 'true';
+export function catalogEnabled(env: NodeJS.ProcessEnv): boolean {
+  if (env.VERCEL !== '1' || env.ROYS_CATALOG_PREVIEW_ENABLED !== 'true') return false;
+  if (env.VERCEL_ENV === 'preview') return true;
+  // Main is a staging-data test site, even though Vercel labels it Production.
+  // Use platform identity, never request headers, to constrain this exception.
+  return env.VERCEL_ENV === 'production'
+    && env.VERCEL_PROJECT_ID === MAIN_TEST_PROJECT_ID
+    && env.VERCEL_GIT_COMMIT_REF === 'main';
 }
 
 export function createCatalogHandler(fetcher: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, localDevelopment = false) {
@@ -75,7 +82,10 @@ export function createCatalogHandler(fetcher: typeof fetch = fetch, env: NodeJS.
       res.setHeader('Allow', 'GET');
       return send(405, { error: 'The catalog accepts read-only requests.' });
     }
-    if (!localDevelopment && !previewEnabled(env)) return send(503, { error: 'ERP preview access has not been enabled for this deployment.' });
+    if (!localDevelopment && !catalogEnabled(env)) return send(503, {
+      error: 'ERP staging catalog access has not been enabled for this deployment.',
+      code: env.ROYS_CATALOG_PREVIEW_ENABLED === 'true' ? 'CATALOG_DEPLOYMENT_NOT_ALLOWED' : 'CATALOG_FLAG_DISABLED',
+    });
     let url: URL;
     try { url = upstreamUrl(req.url ?? ''); }
     catch (error) { return send(400, { error: (error as Error).message }); }

@@ -1,0 +1,253 @@
+{
+  "functionMode": "packaged-js",
+  "cases": [
+    "Account action stays disabled; no login form, API call or mock user is created",
+    "Original tree → year → make → model → engine → category → inline real ERP parts",
+    "Original detail modal and persistent Quick Cart; quantity survives reload; no card/order flow",
+    "ERP part-number search and stock filter inside the same page",
+    "Year/model/engine/category state remains isolated across two vehicles",
+    "2021 Ford F-150 engine/category search retains full context and restores after reload",
+    "2019 Honda Civic engine/category search retains full context and restores after reload",
+    "Original mobile tree, internally scrolling parts table and Quick Cart sheet"
+  ],
+  "apiRequests": 44,
+  "apiResponses": [
+    {
+      "resource": "categories",
+      "status": 200,
+      "count": 26,
+      "url": "/api/catalog?resource=categories"
+    },
+    {
+      "resource": "years",
+      "status": 200,
+      "count": 52,
+      "url": "/api/catalog?resource=years"
+    },
+    {
+      "resource": "makes",
+      "status": 200,
+      "count": 46,
+      "url": "/api/catalog?year=2020&resource=makes"
+    },
+    {
+      "resource": "models",
+      "status": 200,
+      "count": 19,
+      "url": "/api/catalog?year=2020&make=Toyota&resource=models"
+    },
+    {
+      "resource": "engines",
+      "status": 200,
+      "count": 2,
+      "url": "/api/catalog?year=2020&make=Toyota&model=Camry&resource=engines"
+    },
+    {
+      "resource": "category",
+      "status": 200,
+      "url": "/api/catalog?slug=brakes&resource=category"
+    },
+    {
+      "resource": "search",
+      "status": 200,
+      "count": 24,
+      "url": "/api/catalog?category=brakes-brake-pads&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "resource": "years",
+      "status": 200,
+      "count": 52,
+      "url": "/api/catalog?resource=years"
+    },
+    {
+      "resource": "categories",
+      "status": 200,
+      "count": 26,
+      "url": "/api/catalog?resource=categories"
+    },
+    {
+      "resource": "makes",
+      "status": 200,
+      "count": 46,
+      "url": "/api/catalog?year=2020&resource=makes"
+    },
+    {
+      "resource": "models",
+      "status": 200,
+      "count": 19,
+      "url": "/api/catalog?year=2020&make=Toyota&resource=models"
+    },
+    {
+      "resource": "engines",
+      "status": 200,
+      "count": 2,
+      "url": "/api/catalog?year=2020&make=Toyota&model=Camry&resource=engines"
+    },
+    {
+      "resource": "search",
+      "status": 200,
+      "count": 6,
+      "url": "/api/catalog?q=ALD1212M&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "resource": "search",
+      "status": 200,
+      "count": 5,
+      "url": "/api/catalog?q=ALD1212M&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&in_stock_only=true&resource=search"
+    },
+    {
+      "resource": "makes",
+      "status": 200,
+      "count": 46,
+      "url": "/api/catalog?year=2021&resource=makes"
+    },
+    {
+      "resource": "models",
+      "status": 200,
+      "count": 19,
+      "url": "/api/catalog?year=2021&make=Toyota&resource=models"
+    },
+    {
+      "resource": "engines",
+      "status": 200,
+      "count": 2,
+      "url": "/api/catalog?year=2021&make=Toyota&model=Camry&resource=engines"
+    },
+    {
+      "resource": "category",
+      "status": 200,
+      "url": "/api/catalog?slug=brakes&resource=category"
+    },
+    {
+      "resource": "search",
+      "status": 200,
+      "count": 24,
+      "url": "/api/catalog?category=brakes-brake-pads&year=2021&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "resource": "models",
+      "status": 200,
+      "count": 21,
+      "url": "/api/catalog?year=2021&make=Ford&resource=models"
+    },
+    {
+      "resource": "engines",
+      "status": 200,
+      "count": 6,
+      "url": "/api/catalog?year=2021&make=Ford&model=F-150&resource=engines"
+    },
+    {
+      "resource": "search",
+      "status": 200,
+      "count": 24,
+      "url": "/api/catalog?category=brakes-brake-pads&year=2021&make=Ford&model=F-150&engine_base_id=2146&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "resource": "years",
+      "status": 200,
+      "count": 52,
+      "url": "/api/catalog?resource=years"
+    },
+    {
+      "resource": "categories",
+      "status": 200,
+      "count": 26,
+      "url": "/api/catalog?resource=categories"
+    }
+  ],
+  "searchUrls": [
+    "/api/catalog?category=brakes-brake-pads&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search",
+    "/api/catalog?q=ALD1212M&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search",
+    "/api/catalog?q=ALD1212M&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&in_stock_only=true&resource=search",
+    "/api/catalog?category=brakes-brake-pads&year=2021&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search",
+    "/api/catalog?category=brakes-brake-pads&year=2021&make=Ford&model=F-150&engine_base_id=2146&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search",
+    "/api/catalog?category=brakes-brake-pads&year=2021&make=Ford&model=F-150&engine_base_id=2146&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search",
+    "/api/catalog?category=brakes-brake-pads&year=2019&make=Honda&model=Civic&engine_base_id=2118&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search",
+    "/api/catalog?category=brakes-brake-pads&year=2019&make=Honda&model=Civic&engine_base_id=2118&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search",
+    "/api/catalog?category=brakes-brake-pads&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+  ],
+  "vehicleContexts": [
+    {
+      "year": 2020,
+      "make": "Toyota",
+      "makeId": 76,
+      "model": "Camry",
+      "modelId": 1011,
+      "engine": "2.5L 4-Cyl L",
+      "engineId": 17637,
+      "category": "Brake Pad",
+      "categoryId": 180,
+      "searchUrl": "/api/catalog?category=brakes-brake-pads&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "year": 2021,
+      "make": "Ford",
+      "makeId": 54,
+      "model": "F-150",
+      "modelId": 666,
+      "engine": "3.5L 6-Cyl V",
+      "engineId": 2146,
+      "category": "Brake Pad",
+      "categoryId": 180,
+      "searchUrl": "/api/catalog?category=brakes-brake-pads&year=2021&make=Ford&model=F-150&engine_base_id=2146&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "year": 2021,
+      "make": "Ford",
+      "makeId": 54,
+      "model": "F-150",
+      "modelId": 666,
+      "engine": "3.5L 6-Cyl V",
+      "engineId": 2146,
+      "category": "Brake Pad",
+      "categoryId": 180,
+      "searchUrl": "/api/catalog?category=brakes-brake-pads&year=2021&make=Ford&model=F-150&engine_base_id=2146&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "year": 2019,
+      "make": "Honda",
+      "makeId": 59,
+      "model": "Civic",
+      "modelId": 752,
+      "engine": "1.5L 4-Cyl L",
+      "engineId": 2118,
+      "category": "Brake Pad",
+      "categoryId": 180,
+      "searchUrl": "/api/catalog?category=brakes-brake-pads&year=2019&make=Honda&model=Civic&engine_base_id=2118&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "year": 2019,
+      "make": "Honda",
+      "makeId": 59,
+      "model": "Civic",
+      "modelId": 752,
+      "engine": "1.5L 4-Cyl L",
+      "engineId": 2118,
+      "category": "Brake Pad",
+      "categoryId": 180,
+      "searchUrl": "/api/catalog?category=brakes-brake-pads&year=2019&make=Honda&model=Civic&engine_base_id=2118&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    },
+    {
+      "year": 2020,
+      "make": "Toyota",
+      "makeId": 76,
+      "model": "Camry",
+      "modelId": 1011,
+      "engine": "2.5L 4-Cyl L",
+      "engineId": 17637,
+      "category": "Brake Pad",
+      "categoryId": 180,
+      "searchUrl": "/api/catalog?category=brakes-brake-pads&year=2020&make=Toyota&model=Camry&engine_base_id=17637&page=1&limit=24&include_facets=1&include_vehicle_dimensions=1&resource=search"
+    }
+  ],
+  "pageErrors": [],
+  "screenshots": [
+    "desktop-original-home.png",
+    "desktop-original-parts.png",
+    "desktop-original-details.png",
+    "mobile-original-home.png",
+    "mobile-original-parts.png",
+    "mobile-original-cart.png"
+  ],
+  "ald1212mCadPrice": 28
+}
