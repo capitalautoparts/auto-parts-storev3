@@ -62,7 +62,7 @@ request to merge main does not itself configure that environment. Protected
 hosted acceptance and any wider environment configuration must be recorded before
 claiming main is a working ERP-connected test catalog.
 
-## Current validation
+## PR #1 validation
 
 TypeScript, production build and ten contract tests passed on VM511. The final
 integrated Firefox check passed six scenarios with 19 real ERP API requests and
@@ -102,9 +102,10 @@ showing a result does not convert every application into an unconditional fit.
 
 Both the table and detail dialog use ERP availability status. Only an explicit
 out_of_stock result says Out of Stock. Unconfirmed status stays unconfirmed even
-if a quantity or ERP default lead time is present. Available/special-order and
-backorder statuses retain their meaning; positive lead times are labelled as
-estimates, not delivery guarantees. Low stock remains distinct from in stock.
+if a quantity or ERP default lead time is present. Explicit special-order and
+backorder lead times are labelled as estimates, not delivery guarantees.
+Untracked `available` means “Available to order”; it does not expose the search
+API's default lead time as an ETA. Low stock remains distinct from in stock.
 
 Removed unused mock-data.ts, CheckoutPage, OrderConfirmationPage and the three
 components/checkout files. No remaining source imports them. AuthContext and
@@ -118,9 +119,62 @@ Cart additions now normalize quantities before both new-line and existing-line
 updates, and reject non-finite inputs. The duplicate price-formatting ternary is
 removed. Availability and cart regression contracts cover these review findings.
 
+## Orchestrated staging acceptance follow-up
+
+PR #1 merged into staging at 62e7395. The next work package is isolated in
+fix/roysauto-d1492-staging-acceptance. Two smaller Codex executors have separate
+ownership: availability semantics/contracts, and vehicle/pricing browser checks;
+the orchestrator owns integration, remote validation and release review.
+
+Read-only samples on 2026-11-04 (Eastern) returned HTTP 200 throughout:
+
+| Vehicle | Make ID | Model ID | Engine options |
+| --- | --- | --- | --- |
+| 2020 Toyota Camry | 76 | 1011 | 2 |
+| 2021 Ford F-150 | 54 | 666 | 6 |
+| 2019 Honda Civic | 59 | 752 | 3 |
+
+The years endpoint returned 52 entries from 1976 through 2027. This is sampled
+contract evidence, not a claim that all vehicles have complete parts coverage.
+Public staging search returned ALD1212M at CAD 28, BRX1212 at CAD 38, and a starter
+with a CAD 50 core charge at the time checked. Prices may change; browser checks
+must derive their expected cart subtotal from the current response.
+
+ERP publicStockTier.ts defines `available` as untracked but orderable. The earlier
+catalog labelled it Special order; the follow-up fixes that distinction and tests
+positive/default, absent and zero lead times. Prices come from the ERP search
+route's published pricing logic; no mock catalog or Shopify price lookup is used.
+
+Anonymous requests to the supplied preview root and catalog API still redirect
+to Vercel sign-in. No account-owner confirmation of the existing activation
+request is recorded on D1492. Protected hosted acceptance remains outstanding;
+these direct API and VM511 checks must not be described as a hosted preview pass.
+Main remains on hold and no deployment settings or credentials have changed.
+
 ## Future work
 
 Helcim sandbox checkout, shipping/tax, independent sales eligibility, SSR product
 SEO, canonical .ca/.com rules, measured load/latency and catalog coverage remain
 separate work packages. Multi-company ERP is outside scope. The existing Tools,
 VIN, order-status and promotions placeholders are not connected by this change.
+
+## Follow-up validation
+
+VM511 agent-pre-push passed TypeScript and all ten contract tests. The final
+build and eight integrated Firefox scenarios passed with 44 real ERP responses
+and zero browser exceptions. Ford F-150 (3.5L, engine 2146) and Honda Civic
+(1.5L, engine 2118) both rendered brake-pad results before and after reload,
+with fresh full-context searches. The saved cart subtotal used the live CAD
+price for exact SKU DVNJ_ALD1212M, not a fixed total or ambiguous part number.
+
+Reviewed desktop (1440×1000), mobile parts and mobile cart (390×844):
+
+- [Desktop](evidence/d1492-acceptance/desktop.png)
+- [Mobile parts](evidence/d1492-acceptance/mobile-parts.png)
+- [Mobile cart](evidence/d1492-acceptance/mobile-cart.png)
+- [Sanitized response/context report](evidence/d1492-acceptance/report.json)
+
+Local evidence: /srv/dev/reports/roysauto-d1492-acceptance/. A browser-only
+invocation moved to a fresh runner lane without built assets; the missing dist
+was confirmed, then build plus browser smoke in one job passed. No ERP 403 was
+observed. Hosted Vercel acceptance is still unverified behind sign-in.

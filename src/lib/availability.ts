@@ -7,7 +7,7 @@ export function availabilitySummary(part: Pick<Part, 'availability' | 'leadTimeD
     case 'in_stock': return { label: 'In Stock', tone: 'positive', confirmedStock: true } as const;
     case 'low_stock': return { label: 'Low Stock', tone: 'positive', confirmedStock: true } as const;
     case 'out_of_stock': return { label: 'Out of Stock', tone: 'negative', confirmedStock: false } as const;
-    case 'available':
+    case 'available': return { label: 'Available to order', tone: 'neutral', confirmedStock: false } as const;
     case 'special_order':
     case 'backorder': {
       const days = part.leadTimeDays;

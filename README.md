@@ -33,8 +33,8 @@ uses real ERP data; it does not intercept or mock catalog responses.
 - Account creation, payment/address capture, shipping/tax simulation and order
   placement are disabled in the active catalog. Helcim is a later work package.
 
-Original prototype source remains for reference but mock-data.ts is no longer
-imported by the runtime API. There is no silent mock fallback after an API error.
+The unused mock catalog and standalone checkout pages have been removed.
+There is no silent mock fallback after an API error.
 Tools, VIN lookup, order status and promotions are existing unconnected navigation
 placeholders; they are not claimed as implemented integrations.
 
@@ -59,3 +59,15 @@ configuration inventory and protection verification; no automatic public
 activation is included. HTML/API noindex directives are not access control.
 
 See docs/catalog-exploration.md for current evidence and remaining work.
+
+## Staging acceptance follow-up
+
+PR #1 merged into staging at 62e7395. Account-owner activation of the original
+protected branch preview has not been confirmed; a staging-branch merge does not
+change its branch-specific environment settings.
+
+The follow-up corrects untracked ERP availability to “Available to order” without
+turning the search API's default lead time into an ETA. Browser acceptance reads
+the current ERP price when checking the saved cart, and exercises multiple makes
+with complete vehicle context. No direct database credentials are required:
+vehicles, parts and CAD prices are read through the existing ERP staging API.
