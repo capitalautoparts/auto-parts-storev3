@@ -107,13 +107,21 @@ test('catalog fetch rejects JSON primitives as malformed endpoint responses', as
   }
 });
 
-test('upstream is fixed, bounded, read-only and explicitly independent of Shopify sellability', () => {
+test('upstream uses the fixed ERP gateway and preserves the complete allowlisted catalog path', () => {
   const url = upstreamUrl('/api/catalog?resource=search&q=ALD1212M');
-  assert.equal(url.origin, 'https://staging.autopartserp.com');
-  assert.equal(url.pathname, '/api/v1/search');
+  assert.equal(url.origin, 'https://staging.autrex.ca');
+  assert.equal(url.pathname, '/api/erp/api/v1/search');
+  assert.equal(upstreamUrl('/?resource=category&slug=brakes').pathname, '/api/erp/api/v1/taxonomy/categories/brakes');
   assert.equal(url.searchParams.get('limit'), '24');
   assert.equal(url.searchParams.get('in_stock_only'), 'all');
   assert.equal(upstreamUrl('/?resource=years').searchParams.get('vehicleType'), 'light-duty');
+  for (const input of [
+    'http://catalog.local/?resource=years',
+    'https://attacker.example/?resource=years',
+    '//attacker.example/?resource=years',
+    '/admin?resource=years',
+    '/?resource=years#fragment',
+  ]) assert.throws(() => upstreamUrl(input));
   for (const query of ['resource=orders', 'resource=__proto__', 'resource=search', 'resource=search&q=x',
     'resource=search&q=pad&url=https://example.com', 'resource=category&slug=../../auth',
     'resource=search&q=pad&limit=100', 'resource=search&q=pad&page=101',
@@ -167,7 +175,7 @@ test('a denied deployment returns a stable error and never calls ERP', async () 
   }
 });
 
-test('the eligible production deployment can only make GET requests to the fixed ERP staging origin', async () => {
+test('the eligible production deployment can only make GET requests to the fixed ERP gateway', async () => {
   const calls: { url: URL; init?: RequestInit }[] = [];
   const productionEnv = {
     VERCEL: '1', VERCEL_ENV: 'production', ROYS_CATALOG_PREVIEW_ENABLED: 'true',
@@ -185,7 +193,8 @@ test('the eligible production deployment can only make GET requests to the fixed
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { years: [2020] });
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url.origin, 'https://staging.autopartserp.com');
+    assert.equal(calls[0].url.origin, 'https://staging.autrex.ca');
+    assert.equal(calls[0].url.pathname, '/api/erp/api/v1/vehicles/years');
     assert.equal(calls[0].init?.method ?? 'GET', 'GET');
     assert.equal(calls[0].init?.redirect, 'error');
   } finally { server.close(); server.closeAllConnections(); }
@@ -295,6 +304,7 @@ test('HTTP boundary blocks writes, preserves Cloudflare reference, never forward
   const fakeFetch: typeof fetch = async (url, init) => {
     calls.push({ url: String(url), init });
     if (String(url).includes('blocked')) return new Response('private upstream error', { status: 403, headers: { 'cf-ray': 'test-ray' } });
+    if (String(url).includes('q=stub')) return new Response('private stub data', { status: 200, headers: { 'content-type': 'application/json', 'X-ERP-Stub': '1' } });
     return Response.json({ years: [2020] });
   };
   const server = createServer(createCatalogHandler(fakeFetch, {}, true)).listen(0, '127.0.0.1');
@@ -318,5 +328,10 @@ test('HTTP boundary blocks writes, preserves Cloudflare reference, never forward
     const body = await blocked.json();
     assert.equal(body.reference, 'test-ray');
     assert.doesNotMatch(JSON.stringify(body), /private upstream/);
+    const stub = await fetch(`${base}/?resource=search&q=stub`);
+    assert.equal(stub.status, 502);
+    const stubBody = await stub.json();
+    assert.deepEqual(stubBody, { error: 'The staging catalog is temporarily unavailable.' });
+    assert.doesNotMatch(JSON.stringify(stubBody), /private stub data/);
   } finally { server.close(); server.closeAllConnections(); }
 });

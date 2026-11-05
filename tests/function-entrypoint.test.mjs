@@ -84,7 +84,7 @@ test('emitted Vercel catalog entrypoint enforces the Preview and main-only Produ
   const upstreamRequests = [];
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
-    if (url.origin === 'https://staging.autopartserp.com') {
+    if (url.origin === 'https://staging.autrex.ca') {
       upstreamRequests.push({ url, init });
       return Response.json({ years: [2020, 2021] });
     }
@@ -117,7 +117,8 @@ test('emitted Vercel catalog entrypoint enforces the Preview and main-only Produ
       assert.match(response.headers.get('content-type') ?? '', /application\/json/i);
       assert.deepEqual(await response.json(), { years: [2020, 2021] });
       assert.equal(upstreamRequests.length, 1);
-      assert.equal(upstreamRequests[0].url.origin, 'https://staging.autopartserp.com');
+      assert.equal(upstreamRequests[0].url.origin, 'https://staging.autrex.ca');
+      assert.equal(upstreamRequests[0].url.pathname, '/api/erp/api/v1/vehicles/years');
     } finally { restoreEnabledEnv(); }
 
     const restoreProductionEnv = setEnvironment({
@@ -133,7 +134,8 @@ test('emitted Vercel catalog entrypoint enforces the Preview and main-only Produ
       assert.match(response.headers.get('content-type') ?? '', /application\/json/i);
       assert.deepEqual(await response.json(), { years: [2020, 2021] });
       assert.equal(upstreamRequests.length, 2);
-      assert.equal(upstreamRequests[1].url.origin, 'https://staging.autopartserp.com');
+      assert.equal(upstreamRequests[1].url.origin, 'https://staging.autrex.ca');
+      assert.equal(upstreamRequests[1].url.pathname, '/api/erp/api/v1/vehicles/years');
     } finally { restoreProductionEnv(); }
 
     const blockedProductionCases = [
