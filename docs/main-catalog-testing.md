@@ -20,12 +20,18 @@ deployments continue to work. Missing/false flags and any other Production
 project or branch remain disabled. Identity comes from Vercel's runtime
 variables, not request headers; do not manually override platform variables.
 
-The backend is still fixed to `https://staging.autopartserp.com`. Its public
-catalog routes provide years, makes, models, engines, taxonomy and search/CAD
-prices. Only GET is accepted, caller credentials are never forwarded, redirects
+The backend now uses the existing public gateway at
+`https://staging.autrex.ca/api/erp`, whose staging configuration points to
+`https://staging.autopartserp.com`. Its public catalog routes provide years,
+makes, models, engines, taxonomy and search/CAD prices. Only GET is accepted,
+caller credentials are never forwarded, redirects
 are rejected, and existing query limits/timeouts/body limits remain in force.
 No ERP production reads, staff/customer endpoints, database writes, account
 login, checkout, orders or payments are introduced.
+
+The November 5 gateway follow-up and its separate hosted acceptance requirements
+are documented in [staging-catalog-gateway.md](staging-catalog-gateway.md).
+The pre-release browser evidence below belongs to the earlier direct-ERP route.
 
 ## Deployment settings inventory
 

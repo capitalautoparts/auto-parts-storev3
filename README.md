@@ -10,7 +10,9 @@ Canada/CAD is enabled; future US/USD configuration remains explicit and disabled
 Use Node 22. On a development machine, install dependencies with npm ci and start
 the Vite development server. The same read-only server adapter serves local Vite
 and the Vercel API function. No database connection string or credentials are
-needed. Requests use the fixed staging public API and an honest application UA.
+needed. Requests use the fixed public catalog gateway at
+https://staging.autrex.ca/api/erp and an honest application UA. That existing
+gateway reads ERP staging; RoysAuto does not receive its server-side credentials.
 
 VM510 is orchestration only. Check dev-remote --queue before validation and use
 agent-pre-push for TypeScript and contract tests on VM511. Production builds and
@@ -56,8 +58,10 @@ requires VERCEL=1 and ROYS_CATALOG_PREVIEW_ENABLED=true (exact lowercase text):
 
 Vercel supplies project and branch identity as system environment variables.
 The exception does not use caller-supplied headers or a configurable backend URL.
-Vercel Production here still reads only https://staging.autopartserp.com;
-it does not select the production ERP database. Checkout stays disabled.
+Vercel Production here reads ERP staging through the existing staging website's
+restricted catalog gateway. It does not select the production ERP database.
+Checkout stays disabled. See docs/staging-catalog-gateway.md for the route,
+verified data source, cache behavior and hosted acceptance requirements.
 This makes catalog data publicly readable on the existing main test alias when
 the flag is enabled and that alias is public. Noindex is not access control.
 
