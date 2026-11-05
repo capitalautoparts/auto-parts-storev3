@@ -1,0 +1,59 @@
+{
+  "base": "https://staging.autrex.ca/api/erp/api/v1",
+  "checkedAtUtc": "2026-11-05T12:33:32.307Z",
+  "requests": [
+    {
+      "name": "makes",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "ray": "a55be331af50c9d6-YYZ",
+      "stub": null,
+      "count": 46
+    },
+    {
+      "name": "models",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "ray": "a55be3338aabc9d6-YYZ",
+      "stub": null,
+      "count": 19
+    },
+    {
+      "name": "engines",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "ray": "a55be3358e79c9d6-YYZ",
+      "stub": null,
+      "count": 2
+    },
+    {
+      "name": "category",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "ray": "a55be33f0febc9d6-YYZ",
+      "stub": null
+    },
+    {
+      "name": "parts",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "ray": "a55be33fd9b7c9d6-YYZ",
+      "stub": null,
+      "count": 24
+    },
+    {
+      "name": "price",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "ray": "a55be3485b49c9d6-YYZ",
+      "stub": null,
+      "count": 6
+    }
+  ],
+  "sample": {
+    "sku": "DVNJ_ALD1212M",
+    "price": 28,
+    "currency": "CAD"
+  },
+  "passed": true
+}

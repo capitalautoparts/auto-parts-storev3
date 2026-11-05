@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-const ORIGIN = 'https://staging.autopartserp.com';
+const GATEWAY = new URL('https://staging.autrex.ca/api/erp');
+const CATALOG_PATHS = new Set(['/', '/api/catalog']);
 const USER_AGENT = 'RoysAuto-Catalog-Preview/1.0 (+Autrex; staging read-only)';
 const MAIN_TEST_PROJECT_ID = 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p';
 const vehicleKeys = ['year', 'make', 'model'];
@@ -18,7 +19,12 @@ const routes: Record<string, { path: string; keys: string[]; required?: string[]
 };
 
 export function upstreamUrl(input: string): URL {
-  const params = new URL(input, 'http://catalog.local').searchParams;
+  const requestUrl = new URL(input, 'http://catalog.local');
+  if (!input.startsWith('/') || input.startsWith('//') || requestUrl.origin !== 'http://catalog.local'
+    || !CATALOG_PATHS.has(requestUrl.pathname) || requestUrl.hash) {
+    throw new Error('Unsupported catalog request URL.');
+  }
+  const params = requestUrl.searchParams;
   const resource = params.get('resource') ?? '';
   if (!Object.hasOwn(routes, resource)) throw new Error('Unknown catalog resource.');
   const route = routes[resource];
@@ -48,7 +54,8 @@ export function upstreamUrl(input: string): URL {
     const hasVehicleFilter = params.has('make') || params.has('model') || searchKeys.some(k => k.endsWith('_id') && params.has(k));
     if (hasVehicleFilter && !vehicleKeys.every(k => params.has(k))) throw new Error('Complete the vehicle selection.');
   }
-  const url = new URL(`/api/v1${route.path}`, ORIGIN);
+  const url = new URL(GATEWAY);
+  url.pathname += `/api/v1${route.path}`;
   if (resource === 'category') {
     const slug = params.get('slug')!;
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error('Invalid category.');
@@ -94,6 +101,10 @@ export function createCatalogHandler(fetcher: typeof fetch = fetch, env: NodeJS.
         headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
         signal: AbortSignal.timeout(15_000), redirect: 'error',
       });
+      if (response.headers.get('x-erp-stub') === '1') {
+        await response.body?.cancel();
+        return send(502, { error: 'The staging catalog is temporarily unavailable.' });
+      }
       if (!response.ok) {
         const rayId = response.headers.get('cf-ray');
         await response.body?.cancel();
