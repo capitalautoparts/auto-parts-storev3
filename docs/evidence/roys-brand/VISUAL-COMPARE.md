@@ -30,3 +30,27 @@ None needing a fix now. Colours, wordmark and favicon wiring match the mockups.
 - Tier pills and per-row wishlist heart in the parts table; Details button styling.
 - Filled-cart view and shipping/billing forms (checkout stays disabled under D1492).
 - Add-to-cart toast.
+
+## After #13 merge (merge commit 16a6730)
+
+Same method (built `vite preview` on VM511, Playwright Firefox, real staging data, no stubs), now via the updated
+`scripts/brand-screenshots.mjs`, which also walks 2020 > Toyota > Camry > 3.5L 6-Cyl V > Brakes > Brake Pad
+(84 parts, CAD). Screenshots: `desktop-1440.png`, `mobile-390.png` (default view), `desktop-parts-1440.png`,
+`mobile-parts-390.png` (parts table). Each is under 500 KB.
+
+Now matching the mockup:
+- Charcoal tier band ("FRONT", "CAD / SELLABLE UNIT") with `bg-brand-charcoal`, uppercase tracked label.
+- Burgundy `bg-brand-accent` Add buttons on every row, outlined Details button, heart per row, bold price column.
+- "SELECTED FITMENT" heading and breadcrumb (`2020 Toyota Camry > 3.5L 6-Cyl V > Brake Pad`), which was a gap before.
+- Search placeholder is now vehicle-aware ("Search parts for 2020 Toyota Camry...") with a Search button, as in the mockup.
+- Mobile: card rows with wordmark header, burgundy Add, price top right; the Quick Cart FAB stays burgundy.
+- Mobile width check at 390 px: `scrollWidth` = `clientWidth` = 390 and no Add button crosses the viewport edge; price and Add stay inside.
+
+Still different (layout/feature, not brand):
+- No Daily Driver / Premium tier pills (staging has no tier data; #13 removed the Tier column).
+- Tree stays in the left pane and fills the page; the mockup shows a compact expanded branch above the table. On mobile the tree is collapsed away once a part type is chosen.
+- Mobile Add pill sits flush against the card's left border (cosmetic spacing, PartsTable layout).
+- The floating cart button overlaps the lowest visible row on mobile (expected for a FAB).
+- Filled cart view with address forms and the add-to-cart toast remain out of scope (checkout disabled, D1492); cart was empty.
+
+Brand bugs found: none. No code was changed in this pass.
