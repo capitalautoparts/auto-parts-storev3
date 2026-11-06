@@ -15,6 +15,7 @@ const reservation = createServer().listen(0, '127.0.0.1');
 await once(reservation, 'listening');
 const port = reservation.address().port;
 await new Promise(resolve => reservation.close(resolve));
+// ROYS_SMOKE_BASE_URL checks an already deployed host (e.g. roysauto-staging) instead of a local preview.
 const deployedBase = process.env.ROYS_SMOKE_BASE_URL?.replace(/\/+$/, '');
 const origin = deployedBase || `http://127.0.0.1:${port}`;
 let previewLog = '';
