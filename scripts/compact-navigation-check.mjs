@@ -1,6 +1,6 @@
 // WP-ROYS-COMPACT-NAV1 aa064791. VM511 Firefox, real staging, no mocks.
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { firefox, expect } from '@playwright/test';
 import { createServer } from 'vite';
 import { createProductSmokeMonitor } from './product-links-monitor.mjs';
@@ -25,6 +25,8 @@ if (suppliedBase) {
   hostedBase = url.origin;
 }
 const output = `/tmp/roys-compact-nav-aa064791/${mode}${resume ? `-${resume}` : ''}`;
+// A fresh hosted run must not mix in screenshots left by earlier source runs in the same folder.
+if (hostedBase) await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 const report = { task: 'WP-ROYS-COMPACT-NAV1 aa064791', mode,
   runtime: { mode: hostedBase ? 'hosted-base-url' : 'vite-source-fixed-lan' },
@@ -33,6 +35,8 @@ const report = { task: 'WP-ROYS-COMPACT-NAV1 aa064791', mode,
   cases: [], layouts: [], screenshots: [], apiResponses: [], pageErrors: [], searches: [] };
 const monitor = createProductSmokeMonitor(report);
 const run = action => monitor.run(action);
+// Real-upstream waits: a cold catalog search through the ERP staging gateway can exceed expect's 5 s default.
+const upstreamWait = { timeout: 30_000 };
 const server = hostedBase ? null : await createServer({ server: { host: '127.0.0.1', port: 0 } });
 await server?.listen();
 const origin = hostedBase || new URL(server.resolvedUrls.local[0]).origin;
@@ -72,7 +76,7 @@ try {
     };
     await run(() => page.goto(origin));
     assert.equal(new URL(page.url()).origin, origin, 'No redirect to another origin');
-    await run(() => expect(page.locator('#vehicle-year-2020')).toBeVisible());
+    await run(() => expect(page.locator('#vehicle-year-2020')).toBeVisible(upstreamWait));
     if (mode !== 'desktop-wrap' && !(resume === '1440-root-v2' && width === 1440)) await layout('empty');
     const year = page.locator('#vehicle-year-2020'); await open(year);
     const make = year.locator('..').getByRole('button', { name: 'Toyota', exact: true }); await open(make);
@@ -84,8 +88,8 @@ try {
     const brakes = categories.getByRole('button', { name: 'Brakes', exact: true }); await open(brakes);
     await click(categories.getByRole('button', { name: 'Brake Pad', exact: true }));
     const results = page.getByTestId('inline-parts');
-    await run(() => expect(results).toHaveAttribute('aria-busy', 'false'));
-    await run(() => expect(results.locator('[data-part-id]').first()).toBeVisible());
+    await run(() => expect(results).toHaveAttribute('aria-busy', 'false', upstreamWait));
+    await run(() => expect(results.locator('[data-part-id]').first()).toBeVisible(upstreamWait));
     if (mode !== 'desktop-wrap' && !(resume === '1440-root-v2' && width === 1440)) {
       await layout('selected-pad');
       report.cases.push(`${width}: matching empty/2020 Toyota Camry 2.5L Brake Pad states, real results, no horizontal overflow, reserved cart geometry`);
@@ -103,7 +107,7 @@ try {
       })));
       const initial = await state();
       const activeName = await engine.textContent();
-      const waitParts = () => run(() => expect(results).toHaveAttribute('aria-busy', 'false'));
+      const waitParts = () => run(() => expect(results).toHaveAttribute('aria-busy', 'false', upstreamWait));
       const focusIs = id => run(() => expect(page.locator(`#${id}`)).toBeFocused());
       const collapse = async () => {
         // Close every level deepest-first so each reveal must reconstruct its
