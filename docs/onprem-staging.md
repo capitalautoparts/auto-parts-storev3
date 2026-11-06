@@ -16,14 +16,18 @@ catalog-connected test site runs on our staging VM (VM 459 `roysauto-staging`, p
 - Vercel deployments never use the LAN upstream: `VERCEL=1` with `ROYS_ONPREM=1` is denied
   (`CATALOG_DEPLOYMENT_NOT_ALLOWED`).
 
+Transport note: plain HTTP over the LAN to VM 453 is accepted per D1575 (internal network,
+read-only public catalog data, no credentials). The Node process listens on loopback only; nginx is the
+only network-facing component.
+
 ## Environment (all non-secret)
 
 | Variable | Value | Purpose |
 | --- | --- | --- |
 | `ROYS_ONPREM` | `1` | Selects the LAN upstream; required to start |
 | `ROYS_CATALOG_PREVIEW_ENABLED` | `true` | Activation flag |
-| `HOST` | default `127.0.0.1` | Bind address |
-| `PORT` | default `3200` | Bind port |
+| `HOST` | unset or loopback (`127.0.0.1`, `::1`, `localhost`) | Bind address; any non-loopback value is refused at start |
+| `PORT` | integer 1-65535, default `3200` | Bind port; invalid values are refused at start |
 
 ## Run
 

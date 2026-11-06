@@ -246,6 +246,22 @@ test('on-prem handler fetches only the LAN upstream and Vercel+on-prem is denied
   assert.equal(calls.length, 1);
 });
 
+test('Vercel plus on-prem is denied even in local-development mode and never fetches', async () => {
+  assert.throws(() => catalogGateway({ ROYS_ONPREM: '1', VERCEL: '1' }));
+  let called = false;
+  const server = createServer(createCatalogHandler(async () => { called = true; return Response.json({}); },
+    { ROYS_ONPREM: '1', VERCEL: '1', ROYS_CATALOG_PREVIEW_ENABLED: 'true' }, true)).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/?resource=years`);
+    assert.equal(response.status, 503);
+    assert.equal((await response.json() as { code: string }).code, 'CATALOG_DEPLOYMENT_NOT_ALLOWED');
+    assert.equal(called, false);
+  } finally { server.close(); server.closeAllConnections(); }
+});
+
 test('vehicle changes clear dependent fitment; category changes reset pagination and facets', () => {
   const original = { year: '2020', make: 'Toyota', model: 'Camry', engine_base_id: '17637', sub_model_id: '269', category: 'brakes', brand: 'DVNJ', page: '3' };
   assert.deepEqual(changeQuery(original, 'year', '2021'), { year: '2021', category: 'brakes' });

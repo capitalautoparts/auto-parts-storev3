@@ -22,7 +22,10 @@ const routes: Record<string, { path: string; keys: string[]; required?: string[]
 };
 
 export function catalogGateway(env: NodeJS.ProcessEnv = {}): URL {
-  return env.ROYS_ONPREM === '1' ? ONPREM_GATEWAY : GATEWAY;
+  if (env.ROYS_ONPREM !== '1') return GATEWAY;
+  // A Vercel deployment must never reach the LAN upstream, even in local-development mode.
+  if (env.VERCEL === '1') throw new Error('CATALOG_DEPLOYMENT_NOT_ALLOWED');
+  return ONPREM_GATEWAY;
 }
 
 export function upstreamUrl(input: string, base: URL = GATEWAY): URL {
@@ -98,12 +101,17 @@ export function createCatalogHandler(fetcher: typeof fetch = fetch, env: NodeJS.
       res.setHeader('Allow', 'GET');
       return send(405, { error: 'The catalog accepts read-only requests.' });
     }
+    let gateway: URL;
+    try { gateway = catalogGateway(env); }
+    catch {
+      return send(503, { error: 'ERP staging catalog access has not been enabled for this deployment.', code: 'CATALOG_DEPLOYMENT_NOT_ALLOWED' });
+    }
     if (!localDevelopment && !catalogEnabled(env)) return send(503, {
       error: 'ERP staging catalog access has not been enabled for this deployment.',
       code: env.ROYS_CATALOG_PREVIEW_ENABLED === 'true' ? 'CATALOG_DEPLOYMENT_NOT_ALLOWED' : 'CATALOG_FLAG_DISABLED',
     });
     let url: URL;
-    try { url = upstreamUrl(req.url ?? '', catalogGateway(env)); }
+    try { url = upstreamUrl(req.url ?? '', gateway); }
     catch (error) { return send(400, { error: (error as Error).message }); }
     try {
       const response = await fetcher(url, {
