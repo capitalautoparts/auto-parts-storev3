@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type MouseEvent } from "react";
 import { Logo } from "./Logo";
 import { ShoppingCart, Menu, User, LogOut, Heart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,12 @@ export function Header({
   const isAuthenticated = !catalogPreview && signedIn;
   const openAccount = () => setAuthModalOpen(true);
   const focusSearch = () => document.getElementById("catalog-search")?.focus();
+  const followCatalog = (event: MouseEvent<HTMLAnchorElement>, mobile = false) => {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !onCatalogClick) return;
+    event.preventDefault();
+    if (mobile) { pendingMenuCatalog.current = true; setMobileMenuOpen(false); }
+    else onCatalogClick();
+  };
 
   return (
     <header className="shrink-0 bg-brand-navy text-white shadow-sm">
@@ -79,9 +85,9 @@ export function Header({
                 <SheetTitle className="text-white">Menu</SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-4 mt-6">
-                <button onClick={() => { pendingMenuCatalog.current = true; setMobileMenuOpen(false); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
+                <a href="/?scope=all" onClick={event => followCatalog(event, true)} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
                   Part Catalog
-                </button>
+                </a>
                 <button onClick={() => { pendingMenuSearch.current = true; setMobileMenuOpen(false); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
                   Search catalog
                 </button>
@@ -162,7 +168,7 @@ export function Header({
           </div>
 
           <nav aria-label="Catalog" className="hidden lg:flex shrink-0 items-center gap-2 text-sm">
-            <button onClick={onCatalogClick} className="px-2 py-2 rounded hover:bg-white/10">Part Catalog</button>
+            <a href="/?scope=all" onClick={followCatalog} className="px-2 py-2 rounded hover:bg-white/10">Part Catalog</a>
             <button onClick={focusSearch} className="px-2 py-2 rounded hover:bg-white/10">Search catalog</button>
           </nav>
 

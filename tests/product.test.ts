@@ -248,8 +248,8 @@ test('product history intercepts ordinary clicks, preserves native modified link
   let prevented = 0, pushes = 0, backs = 0, replacements = 0, events = 0;
   const location = { pathname: '/' };
   const history = {
-    state: null as { roysProductOverlay?: boolean } | null,
-    pushState(state: { roysProductOverlay: boolean }, _unused: string, path: string) { this.state = state; location.pathname = path; pushes++; },
+    state: { roysCatalog: { version: 1, href: '/?scope=all', scroll: { x: 0, y: 0 } } } as Record<string, unknown> | null,
+    pushState(state: Record<string, unknown>, _unused: string, path: string) { this.state = state; location.pathname = path; pushes++; },
     replaceState(state: null, _unused: string, path: string) { this.state = state; location.pathname = path; replacements++; },
     back() { backs++; },
   };
@@ -262,11 +262,12 @@ test('product history intercepts ordinary clicks, preserves native modified link
     assert.equal(prevented, 0); assert.equal(pushes, 0);
     followProduct(click(), '../hostile'); assert.equal(pushes, 0);
     followProduct(click(), sku);
-    assert.equal(location.pathname, `/products/${sku}`); assert.equal(pushes, 1); assert.equal(events, 1);
+    assert.equal(location.pathname, `/products/${sku}`); assert.equal(pushes, 1); assert.equal(events, 2);
+    assert.deepEqual(history.state?.roysProductBackground, { version: 1, href: '/?scope=all', scroll: { x: 0, y: 0 } });
     followProduct(click(), sku); assert.equal(pushes, 1, 'No duplicate entry for the open product');
     closeProduct(); assert.equal(backs, 1); assert.equal(replacements, 0);
     history.state = null;
-    closeProduct(); assert.equal(replacements, 1); assert.equal(location.pathname, '/'); assert.equal(events, 2);
+    closeProduct(); assert.equal(replacements, 1); assert.equal(location.pathname, '/?scope=all'); assert.equal(events, 3);
   } finally {
     if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow); else Reflect.deleteProperty(globalThis, 'window');
     if (originalPopState) Object.defineProperty(globalThis, 'PopStateEvent', originalPopState); else Reflect.deleteProperty(globalThis, 'PopStateEvent');

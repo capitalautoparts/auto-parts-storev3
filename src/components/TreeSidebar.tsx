@@ -12,6 +12,7 @@ import {
   type VehicleContext,
 } from "@/lib/api";
 import { useQuery } from "@/lib/hooks";
+import type { TreeDisclosure } from '@/features/catalog/navigation-state';
 
 export interface PartSelection {
   year: number;
@@ -19,13 +20,16 @@ export interface PartSelection {
   model: VehicleModel;
   engine: VehicleEngine;
   category: Category;
+  categoryParentSlug?: string;
 }
 
 export interface TreeSidebarHandle {
   focusVehiclePicker: () => void;
-  expandToVehicle: (result: VehicleSearchResult) => void;
+  expandToVehicle: (result: VehicleSearchResult, focus?: boolean) => void;
+  captureDisclosure: () => TreeDisclosure;
+  restoreDisclosure: (value: TreeDisclosure) => void;
   expandToCategory: (result: VehicleSearchResult) => void;
-  revealSelection: (target: 'categories' | 'engines' | 'years' | 'makes' | 'models' | 'selection', vehicle: VehicleContext, category?: Category) => void;
+  revealSelection: (target: 'categories' | 'engines' | 'years' | 'makes' | 'models' | 'selection', vehicle: VehicleContext, category?: Category, focus?: boolean) => void;
 }
 
 export interface VehicleExpansion {
@@ -34,8 +38,8 @@ export interface VehicleExpansion {
   makeName: string;
   modelId: number;
   modelName: string;
-  engineId: number;
-  engineName: string;
+  engineId?: number;
+  engineName?: string;
 }
 
 interface TreeSidebarProps {
@@ -44,15 +48,19 @@ interface TreeSidebarProps {
   activeVehicle: VehicleExpansion | null;
   selectedFitment: PartSelection | null;
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
+  onDisclosureChange?: () => void;
 }
 
 export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
-  function TreeSidebar({ onPartTypeSelect, onVehicleSelect, activeVehicle, selectedFitment, renderPartsInline }, ref) {
+  function TreeSidebar({ onPartTypeSelect, onVehicleSelect, activeVehicle, selectedFitment, renderPartsInline, onDisclosureChange }, ref) {
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedMakes, setExpandedMakes] = useState<Set<string>>(new Set());
   const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
   const [expandedEngines, setExpandedEngines] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const disclosureCallback = useRef(onDisclosureChange);
+  disclosureCallback.current = onDisclosureChange;
+  useEffect(() => { disclosureCallback.current?.(); }, [expandedYears, expandedMakes, expandedModels, expandedEngines, expandedCategories]);
 
   const selectedPath = activeVehicle ? { year: activeVehicle.year, makeId: activeVehicle.makeId,
     modelId: activeVehicle.modelId, engineId: activeVehicle.engineId, categoryId: selectedFitment?.category.id } : {};
@@ -79,8 +87,14 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
 
   // Expose expandToVehicle and expandToCategory functions via ref
   useImperativeHandle(ref, () => ({
+    captureDisclosure: () => ({ years: [...expandedYears], makes: [...expandedMakes], models: [...expandedModels], engines: [...expandedEngines], categories: [...expandedCategories] }),
+    restoreDisclosure: value => {
+      setFocusTarget(null);
+      setExpandedYears(new Set(value.years)); setExpandedMakes(new Set(value.makes));
+      setExpandedModels(new Set(value.models)); setExpandedEngines(new Set(value.engines)); setExpandedCategories(new Set(value.categories));
+    },
     focusVehiclePicker: () => setFocusTarget('vehicle-picker'),
-    revealSelection: (target, vehicle, category) => {
+    revealSelection: (target, vehicle, category, focus = true) => {
       const { year, makeId, modelId, engineId } = vehicle;
       const makeKey = `${year}-${makeId}`;
       const modelKey = `${makeKey}-${modelId}`;
@@ -96,13 +110,13 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
       }
       // Focus the disclosure whose choices were requested, never its selection
       // action. A breadcrumb reveal changes no active vehicle or results state.
-      setFocusTarget(target === 'years' || target === 'makes' ? `vehicle-year-${year}`
+      if (focus) setFocusTarget(target === 'years' || target === 'makes' ? `vehicle-year-${year}`
         : target === 'models' ? `vehicle-make-${makeKey}`
         : target === 'engines' || engineId === undefined ? `vehicle-model-${modelKey}`
         : target === 'selection' && category ? `vehicle-category-${engineKey}-${category.id}`
         : `vehicle-categories-toggle-${engineKey}`);
     },
-    expandToVehicle: (result: VehicleSearchResult) => {
+    expandToVehicle: (result: VehicleSearchResult, focus = true) => {
       if (!result.year) return;
 
       // Expand year
@@ -122,7 +136,10 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
       if (result.engineId !== undefined) {
         setExpandedEngines(prev => new Set(prev).add(`${result.year}-${result.makeId}-${result.modelId}-${result.engineId}`));
       }
-
+      if (focus) setFocusTarget(result.makeId === undefined ? `vehicle-year-${result.year}`
+        : result.modelId === undefined ? `vehicle-make-${result.year}-${result.makeId}`
+        : result.engineId === undefined ? `vehicle-model-${result.year}-${result.makeId}-${result.modelId}`
+        : `vehicle-categories-toggle-${result.year}-${result.makeId}-${result.modelId}-${result.engineId}`);
     },
     expandToCategory: (result: VehicleSearchResult) => {
       if (!result.year || !result.makeId || !result.modelId || result.engineId === undefined || !result.categoryId) return;
@@ -136,6 +153,7 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
       const category: Category = { id: result.categoryId, name: result.categoryName ?? result.label, slug: result.categorySlug, parentId: result.categoryParentId ?? null };
       if (category.parentId) setExpandedCategories(prev => new Set(prev).add(`${result.year}-${result.makeId}-${result.modelId}-${result.engineId}-${category.parentId}`));
       const selection: PartSelection = {
+        categoryParentSlug: categoriesData?.find(item => item.id === result.categoryParentId)?.slug,
         year: result.year,
         make: { id: result.makeId, name: result.makeName! },
         model: { id: result.modelId, name: result.modelName!, makeId: result.makeId },
@@ -217,7 +235,7 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
         Part Catalog
       </h2>
 
-      {yearsLoading && <p role="status" className="p-2 text-sm">Loading vehicle catalog…</p>}
+      {yearsLoading && <p role="status" data-tree-loading className="p-2 text-sm">Loading vehicle catalog…</p>}
       {(yearsError || categoriesError) && <div role="alert" className="p-3 text-sm text-red-700">{(yearsError || categoriesError)?.message}<button onClick={() => {
         if (yearsError) void retryYears();
         if (categoriesError) void retryCategories();
@@ -699,6 +717,7 @@ function CategoryNode({
                       model,
                       engine,
                       category: child,
+                      categoryParentSlug: category.slug,
                     })
                   }
                   className={cn(
@@ -727,5 +746,5 @@ function CategoryNode({
 
 
 function BranchStatus({ loading, error, onRetry }: { loading: boolean; error: Error | null; onRetry?: () => Promise<void> }) {
-  return loading ? <p role="status" className="ml-4 py-1 text-xs text-muted-foreground">Loading…</p> : error ? <p role="alert" className="ml-4 py-1 text-xs text-red-700">{error.message}{onRetry && <button onClick={() => void onRetry()} className="underline ml-2">Retry</button>}</p> : null;
+  return loading ? <p role="status" data-tree-loading className="ml-4 py-1 text-xs text-muted-foreground">Loading…</p> : error ? <p role="alert" className="ml-4 py-1 text-xs text-red-700">{error.message}{onRetry && <button onClick={() => void onRetry()} className="underline ml-2">Retry</button>}</p> : null;
 }
