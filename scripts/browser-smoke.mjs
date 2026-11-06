@@ -14,10 +14,14 @@ const reservation = createServer().listen(0, '127.0.0.1');
 await once(reservation, 'listening');
 const port = reservation.address().port;
 await new Promise(resolve => reservation.close(resolve));
-const origin = `http://127.0.0.1:${port}`;
+// ROYS_SMOKE_BASE_URL checks an already deployed host (e.g. roysauto-staging) instead of a local preview.
+const deployedBase = process.env.ROYS_SMOKE_BASE_URL?.replace(/\/+$/, '');
+const origin = deployedBase || `http://127.0.0.1:${port}`;
 let previewLog = '';
 let closePreview;
-if (process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT) {
+if (deployedBase) {
+  closePreview = async () => {};
+} else if (process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT) {
   const { default: handler } = await import(pathToFileURL(process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT).href);
   const { preview } = await import('vite');
   const server = await preview({
@@ -42,7 +46,7 @@ if (process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT) {
 }
 let browser;
 let activePage;
-const report = { functionMode: process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT ? 'packaged-js' : 'vite-source', cases: [], apiRequests: 0, apiResponses: [], searchUrls: [], vehicleContexts: [], pageErrors: [], screenshots: [] };
+const report = { functionMode: deployedBase ? `deployed ${deployedBase}` : process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT ? 'packaged-js' : 'vite-source', cases: [], apiRequests: 0, apiResponses: [], searchUrls: [], vehicleContexts: [], pageErrors: [], screenshots: [] };
 const accountRequests = [];
 const apiPayloads = new Map();
 const apiWaiters = [];
