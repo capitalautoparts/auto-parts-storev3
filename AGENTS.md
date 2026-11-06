@@ -25,8 +25,9 @@ Architecture: `docs/agent-reference/architecture.md`. Endpoints: `docs/agent-ref
 - On Vercel, a push to `main` deploys the Vercel "Production" environment of project
   `prj_MDoqEvUIZHzv65GCFYxLE03xVt2p`, which is the existing public test site
   (`https://auto-parts-storev3.vercel.app`) reading ERP staging data with checkout disabled. It is
-  not a live business site. Other branches get protected Vercel previews. Detail and the settings
-  inventory template: `docs/agent-reference/deploy-vercel.md`.
+  not a live business site. Other branches get protected Vercel previews (see D1575 below:
+  catalog-connected testing moves on-prem to VM 459; Vercel main is design-only). Detail and the
+  settings inventory template: `docs/agent-reference/deploy-vercel.md`.
 
 ## One task, one branch, one worktree
 

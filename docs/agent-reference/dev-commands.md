@@ -1,9 +1,15 @@
 # Dev commands
 
-Node 22 is required (CI uses 22). VM510 is orchestration only: do not run any of the heavy commands below directly there.
+Node 22 is required (CI uses 22).
+
+> Host-specific: the VM510/VM511 split and the `agent-pre-push`, `dev-check` and `dev-remote` wrappers
+> exist on Autrex's VM510 agent host only. Elsewhere (a laptop, Codex cloud) run the npm scripts
+> below directly with Node 22; GitHub CI remains the merge gate.
+
+VM510 is orchestration only: do not run any of the heavy commands below directly there.
 Run them on VM511 through the wrappers. Always check the queue first: `dev-remote --queue`.
 
-## Wrappers (VM511)
+## Wrappers (VM511; host-specific)
 
 | Command | Use |
 |---|---|
