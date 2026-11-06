@@ -8,7 +8,8 @@ catalog-connected test site runs on our staging VM (VM 459 `roysauto-staging`, p
 
 - Browser -> nginx on VM 459 (serves `dist/`, proxies `/api/catalog` and `/healthz` to the Node process).
 - `server/onprem.ts` (node:http) serves `GET /api/catalog` via `createCatalogHandler()` and `GET /healthz`.
-  Everything else returns 404; non-GET returns 405. It does not serve static files.
+  Unknown paths return 404 for any method; `/api/catalog` and `/healthz` return 405 for non-GET.
+  It does not serve static files.
 - Upstream: the single fixed `http://192.168.88.233/api/erp` (VM 453 nginx; plain HTTP, no Host header,
   no credentials). Selected only by `ROYS_ONPREM=1`; no fallback, retry to another route, or env-supplied URL.
 - Same `/api/erp` gateway contract as before; transport change only. User-Agent, `redirect: 'error'`,

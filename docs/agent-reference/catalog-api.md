@@ -1,9 +1,14 @@
 # Catalog API (ERP staging gateway)
 
-All catalog data comes from the fixed gateway `https://staging.autrex.ca/api/erp` (read-only, ERP staging). Browser code never
-calls it: it calls `GET /api/catalog?resource=...` and `server/catalog-proxy.ts` maps that to `<gateway>/api/v1<path>`
+Catalog reads use one of two fixed ERP staging gateways: `https://staging.autrex.ca/api/erp` for Vercel,
+or `http://192.168.88.233/api/erp` for on-prem. Browser code never calls either directly:
+it calls `GET /api/catalog?resource=...` and `server/catalog-proxy.ts` maps that to `<gateway>/api/v1<path>`
 (allowlist and validation: `architecture.md`). The ERP is not changed from this repo; missing capability is filed for ERP lanes.
-D1575 adds a fixed on-prem LAN upstream (`http://192.168.88.233/api/erp`, landing in the on-prem upstream PR); the paths and shapes below do not change.
+D1575's [#9](https://github.com/capitalautoparts/auto-parts-storev3/pull/9) (on-prem upstream/runtime) and
+[#11](https://github.com/capitalautoparts/auto-parts-storev3/pull/11) (deploy workflow) have merged.
+VM 459 serves `staging` via #11's `.github/workflows/deploy-onprem-staging.yml`; Vercel remains design-only.
+On-prem access requires `ROYS_ONPREM=1`, `VERCEL` not `1`, and `ROYS_CATALOG_PREVIEW_ENABLED=true`;
+`VERCEL=1` with `ROYS_ONPREM=1` is denied before the flag check. The endpoint paths and shapes below are unchanged.
 
 The client calls go through `catalogFetch(resource, params)` in `src/features/catalog/model.ts`; `src/lib/erp-api.ts` wraps them.
 Reference calls (years, makes, models, engines, categories, category) are cached 5 minutes client-side; search is not.

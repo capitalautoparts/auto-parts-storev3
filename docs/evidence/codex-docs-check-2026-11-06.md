@@ -6,7 +6,7 @@ Phase 0 step 5; documentation-only review on the isolated branch
 
 ## Scope and method
 
-Orientation used only repository `AGENTS.md`, `docs/AGENT-TOOLBOX.md`,
+Initial orientation used only repository `AGENTS.md`, `docs/AGENT-TOOLBOX.md`,
 `docs/agent-reference/{README,architecture,catalog-api,dev-commands,deploy-vercel}.md`,
 and `docs/onprem-staging.md`, plus the mandatory host rules in `~/.codex/AGENTS.md`.
 I did not consult the legacy setup/API docs, historical evidence, external documentation, other
@@ -36,14 +36,16 @@ This is source verification, not evidence that VM 459 or the live catalog was re
 - The development reference supplied the queue/pre-push commands and the deployment reference
   supplied the exact Smoke plan and Deployment settings inventory template. No new tool was needed.
 
-## Missing, wrong or ambiguous information
+## Initial findings: missing, wrong or ambiguous information
+
+These findings describe the initial read. The follow-up corrections are listed under “Fixed in this PR”.
 
 - **Stale implementation status:** `architecture.md` ends with “Not in this branch's code yet.”;
   `deploy-vercel.md` still says staging has only the Vercel gateway until the on-prem PR merges.
   `catalog-api.md` and the root D1575 amendment also describe the code as landing later. At the
   checked commit, both fixed gateways and the on-prem gate are already implemented. The runtime
-  guide is the more current description. I recorded this drift rather than expanding the requested
-  two-file change into a general reference rewrite.
+  guide was the more current description. The orchestrator subsequently requested the reference
+  corrections listed below in this same PR.
 - **Activation wording:** the architecture's main gate description and the root D1492 text say
   deployed access requires `VERCEL=1`. The D1575 amendment qualifies that, but readers must reconcile
   the passages. Actual on-prem access requires `VERCEL` not `1`. The new section states the branches
@@ -97,5 +99,23 @@ worktree unless an absolute path is shown. No live endpoint smoke requests or he
 | `agent-pr-finish --help` | Exit 2: did not show help; reported “Worktree is dirty; commit or explicitly resolve changes before handoff.” Deferred the actual finish check until after committing/pushing. |
 | `AGENT_PRE_PUSH_BASE=origin/staging agent-pre-push` | Exit 0: synced to VM511, queued 2m25s for a general lane, then passed `npm run typecheck` and `npm test -- --run` (27 tests passed, 0 failed). Wrapper reported `DEV_CHECK pass checks=typecheck,test`, 159s elapsed. No standalone build or browser run. |
 
-After the wrapper passed, only this evidence record was finalized; no runtime changed and the passing
-remote checks were not repeated. The final staged whitespace check is required before commit.
+After that first wrapper pass, only this evidence record was finalized; no runtime changed and those
+remote checks were not repeated for the initial commit. The final staged whitespace check passed.
+
+## Fixed in this PR
+
+- Added the complete error/cause/first-check map, including health/readiness and routing distinctions.
+- Updated `AGENTS.md`'s D1575 block and the architecture, deployment and catalog API references to
+  record merged #9/#11 and VM 459 serving `staging` through #11's deploy workflow.
+- Documented both activation branches and the Vercel/on-prem conflict being rejected before the
+  flag check. Preserved the D1492 historical block verbatim and added a one-line D1575 pointer after it.
+- Corrected the runtime architecture line: unknown paths return 404 for any method; the catalog and
+  health endpoints return 405 for non-GET.
+
+The follow-up was requested by the Roy's Auto orchestrator on this PR. `gh pr view 9` and `gh pr view 11`
+(JSON state/merge commit/title/URL, plus #11's body) both confirmed `MERGED`. The orchestrator supplied
+the current VM 459 serving status; I did not independently probe the runtime. A second
+`git fetch origin staging` succeeded and showed staging at `d7f9530`; `git diff --name-only HEAD...origin/staging`
+showed the deployment workflow and other work, with no changes to the two verified server files or
+the documentation being corrected. The existing task branch is retained for one docs-only follow-up
+commit; no unrelated staging changes are folded into it.

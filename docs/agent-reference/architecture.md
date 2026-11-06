@@ -70,10 +70,20 @@ Upstream fetch: 15 s timeout, `redirect: 'error'`, UA `RoysAuto-Catalog-Preview/
 credentials forwarded. Upstream `x-erp-stub: 1` -> 502 (gateway development stub rejected). Non-2xx -> 429 stays 429, everything else 502;
 a 403 adds the `cf-ray` value as `reference`. Non-JSON or body over 2,000,000 bytes -> 502.
 
-Activation gate (`catalogEnabled`, bypassed only for local Vite): requires `VERCEL=1` and `ROYS_CATALOG_PREVIEW_ENABLED=true`, then
-`VERCEL_ENV=preview`, or `VERCEL_ENV=production` with `VERCEL_PROJECT_ID=prj_MDoqEvUIZHzv65GCFYxLE03xVt2p` and
-`VERCEL_GIT_COMMIT_REF=main`. Otherwise 503 with code `CATALOG_FLAG_DISABLED` (flag not `true`) or `CATALOG_DEPLOYMENT_NOT_ALLOWED`.
+Activation gate (`catalogEnabled`, skipped by the handler's `localDevelopment` option): deployed access has two branches:
+
+- **On-prem:** `ROYS_ONPREM=1`, `VERCEL` not `1`, and `ROYS_CATALOG_PREVIEW_ENABLED=true`.
+- **Vercel:** `ROYS_ONPREM` not `1`, `VERCEL=1` and `ROYS_CATALOG_PREVIEW_ENABLED=true`, then
+  `VERCEL_ENV=preview`, or `VERCEL_ENV=production` with `VERCEL_PROJECT_ID=prj_MDoqEvUIZHzv65GCFYxLE03xVt2p` and
+  `VERCEL_GIT_COMMIT_REF=main`.
+
+After the method check, `catalogGateway` first rejects `VERCEL=1` together with `ROYS_ONPREM=1` with
+503 `CATALOG_DEPLOYMENT_NOT_ALLOWED`, even if the flag is missing or `localDevelopment` is true.
+Otherwise a failed activation check returns 503 with `CATALOG_FLAG_DISABLED` (flag not `true`) or `CATALOG_DEPLOYMENT_NOT_ALLOWED`.
 Error bodies: `{ error: string, code?: string, reference?: string }`; invalid input is 400 with `{ error }`.
 The client (`catalogFetch`) turns non-JSON, malformed or oversized (>2,000,000 bytes) responses into one retryable message.
 
-D1575: the on-prem upstream PR adds a second fixed upstream, `http://192.168.88.233/api/erp`, selected only by `ROYS_ONPREM=1` (with `ROYS_CATALOG_PREVIEW_ENABLED=true`, `VERCEL` not `1`); see `deploy-vercel.md`. Not in this branch's code yet.
+D1575 is implemented: [#9](https://github.com/capitalautoparts/auto-parts-storev3/pull/9) added the fixed on-prem
+upstream `http://192.168.88.233/api/erp` and runtime; [#11](https://github.com/capitalautoparts/auto-parts-storev3/pull/11)
+added `.github/workflows/deploy-onprem-staging.yml`. Both merged; VM 459 `roysauto-staging` serves `staging`
+through that workflow, with the on-prem activation branch above. Vercel remains design-only; see [deploy-vercel.md](deploy-vercel.md).
