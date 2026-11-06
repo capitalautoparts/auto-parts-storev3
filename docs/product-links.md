@@ -82,9 +82,10 @@ outside this work package.
 
 ## Integrated Node and nginx source
 
-The task branch merged `origin/staging` through d7f9530, including PR9's fixed
+The task branch merged `origin/staging` through ed65080, including PR9's fixed
 LAN adapter, PR10's guidance, PR11's deployment files, PR13's mobile/search/fitment
-fixes, and PR12's approved brand theme (036bc23). No unmerged code was copied.
+fixes, PR12's approved brand theme (036bc23), and PR16's mobile clearance and wordmark
+wait. No unmerged code was copied.
 
 - `readCatalog` selects `catalogGateway(env)` and passes that fixed gateway to
   `upstreamUrl`. The Vercel/on-prem conflict is rejected even in local mode.
@@ -100,7 +101,8 @@ fixes, and PR12's approved brand theme (036bc23). No unmerged code was copied.
   Server noindex/robots headers, static assets and catalog method restrictions
   remain intact. **Infra owns installing/reloading this reviewed config.**
 - Brand wordmark, favicon, index title and ink/paper/burgundy tokens are retained;
-  PR13's compact mobile-grid rows use the brand's charcoal section band.
+  PR13's compact mobile-grid rows use the brand's charcoal section band; PR16's
+  main-area mobile padding remains intact.
 
 Candidate acceptance runs on VM511, not the hosted staging site. Hosted product
 acceptance remains gated on independent review, approved merge/deployment and
@@ -120,6 +122,26 @@ Vite supplies built static assets and forwards product/API requests to this
 packaged Node process, exercising the normal activation gate and fixed staging
 LAN reads. This models nginx dispatch without installing live config. The report
 records the retained package path and exact root entries for independent review.
+
+Candidate evidence after integration (2026-11-06 EST):
+
+- Real ERP staging packaged-runtime product smoke: six journeys passed, no page
+  errors; the 390px internal-dialog overflow, full-control bounds and all-tab
+  click assertions pass. Desktop/mobile screenshots were inspected.
+- Catalog preservation: all ten journeys passed, 50 API responses, no page
+  errors. The obsolete Capital heading locator was corrected to the accessible
+  Roy's Auto wordmark; PR16's reviewed `.first()` form is retained after merge.
+- Artifact root on VM510: `/srv/dev/reports/roys-aa064791-product-links/final/`.
+  `product/` contains product screenshots/report; `preservation/` contains the
+  catalog report and desktop/mobile screenshots. The separate final `close/`
+  proof covers the CSS-only close-control color, bounds and click behavior.
+- The retained packaged release on VM511 is
+  `/tmp/roys-product-links-aa064791-final/release-zBJGOI`, with exactly the three
+  deployment entries listed above. Hosted product acceptance still belongs to
+  infra after reviewed merge and nginx installation.
+- Mobile summary/actions stack without horizontal clipping; tabs form two rows.
+  The product close control has an explicit white-on-charcoal style scoped to
+  the dialog. No global sheet or Quick Cart control styles were changed.
 
 Evidence ledger (2026-11-06 10:58 EST):
 
