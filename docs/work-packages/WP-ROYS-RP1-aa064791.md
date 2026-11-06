@@ -42,3 +42,7 @@ Earlier 20/20 pure/controller fixtures passed on VM511. After coherent A–G
 review changes, the smallest affected remote navigation batch passed 30/30.
 The residual header-focus and cumulative category/clear fixes passed 33/33.
 Browser, final pre-push and PR evidence are recorded in the task evidence file.
+The owned checker includes narrow native-reload and bounded diagnostic helpers;
+shared smoke scripts are unchanged. Integrated source Firefox 1440/390 passed
+with actual request/screenshot evidence, preserving the failed protocol-reload
+attempt separately. No runtime change followed that harness classification.

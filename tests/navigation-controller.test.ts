@@ -294,9 +294,9 @@ test('deferred branch/results restoration waits even for an existing target and 
     focus: () => actions.push('main'), scrollTo: (x: number, y: number) => actions.push(`scroll:${x},${y}`) } as unknown as HTMLElement;
   const presentation: CatalogBackground = { version: 1, href: vehicleUrl, scroll: { x: 0, y: 900 },
     focusKey: 'link:/products/ABCD_FIXTURE', focusControl: 'details', focusIndex: 0 };
-  assert.equal(restoreCatalogPresentation(main, presentation, false), false); assert.deepEqual(actions, []);
+  assert.equal(restoreCatalogPresentation(main, presentation, false), false); assert.equal(actions.length, 0);
   pending = false;
-  assert.equal(restoreCatalogPresentation(main, presentation, true), false); assert.deepEqual(actions, []);
+  assert.equal(restoreCatalogPresentation(main, presentation, true), false); assert.equal(actions.length, 0);
   assert.equal(restoreCatalogPresentation(main, presentation, false), true); assert.deepEqual(actions, ['details', 'scroll:0,900']);
   actions.length = 0;
   assert.equal(restoreCatalogPresentation(main, { ...presentation, focusKey: 'link:/products/ABCD_REMOVED' }, false), true);
