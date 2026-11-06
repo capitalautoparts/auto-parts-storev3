@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Search, Car, Package, X, Wrench } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { vehicleApi, type VehicleSearchResult, type VehicleContext } from "@/lib/api";
 
@@ -31,6 +32,8 @@ export function VehicleSearchBar({
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const requestVersion = useRef(0);
+  const submittedQuery = useRef<string | null>(null);
   useEffect(() => { setQuery(appliedQuery); }, [appliedQuery, vehicleContext]);
 
   useEffect(() => {
@@ -45,9 +48,11 @@ export function VehicleSearchBar({
 
   useEffect(() => {
     let active = true;
+    const requestId = ++requestVersion.current;
     const searchTimeout = setTimeout(async () => {
+      if (!active || requestId !== requestVersion.current) return;
       setError('');
-      if (query.trim().length < 2) {
+      if (query.trim().length < 2 || submittedQuery.current === query.trim()) {
         setResults([]);
         setIsOpen(false);
         setIsLoading(false);
@@ -58,7 +63,8 @@ export function VehicleSearchBar({
       try {
         let searchResults: VehicleSearchResult[];
 
-        if (vehicleContext) {
+        const isYearVehicleQuery = /^\s*\d{4}(?:\s|$)/.test(query);
+        if (vehicleContext && !isYearVehicleQuery) {
           // If we have a vehicle selected, search for categories/part types
           searchResults = await vehicleApi.searchCategories(query, vehicleContext);
         } else {
@@ -66,14 +72,14 @@ export function VehicleSearchBar({
           searchResults = await vehicleApi.search(query);
         }
 
-        if (!active) return;
+        if (!active || requestId !== requestVersion.current) return;
         setResults(searchResults);
-        setIsOpen(searchResults.length > 0);
+        setIsOpen(searchResults.length > 0 && submittedQuery.current !== query.trim());
         setHighlightedIndex(-1);
       } catch (error) {
-        if (active) { setError((error as Error).message); setResults([]); setIsOpen(false); }
+        if (active && requestId === requestVersion.current) { setError((error as Error).message); setResults([]); setIsOpen(false); }
       } finally {
-        if (active) setIsLoading(false);
+        if (active && requestId === requestVersion.current) setIsLoading(false);
       }
     }, 200);
 
@@ -81,6 +87,8 @@ export function VehicleSearchBar({
   }, [query, vehicleContext]);
 
   const handleSelect = (result: VehicleSearchResult) => {
+    requestVersion.current++;
+    setIsLoading(false);
     if (result.type === "vehicle") {
       onVehicleSelect(result);
     } else if (result.type === "part" && onPartSelect) {
@@ -88,14 +96,32 @@ export function VehicleSearchBar({
     } else if (result.type === "category" && onCategorySelect) {
       onCategorySelect(result);
     }
+    submittedQuery.current = null;
     setQuery("");
     setIsOpen(false);
   };
 
+  const submitSearch = () => {
+    const trimmed = query.trim();
+    if (!trimmed || !onTextSearch) return;
+    submittedQuery.current = trimmed;
+    requestVersion.current++;
+    setResults([]);
+    setHighlightedIndex(-1);
+    setIsOpen(false);
+    setIsLoading(false);
+    setError('');
+    onTextSearch(trimmed);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    const nativeEvent = e.nativeEvent as KeyboardEvent;
+    if (nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
+
     if (!isOpen) {
       if (e.key === "Enter" && query.trim() && onTextSearch) {
-        onTextSearch(query);
+        e.preventDefault();
+        submitSearch();
       }
       return;
     }
@@ -116,8 +142,7 @@ export function VehicleSearchBar({
         if (highlightedIndex >= 0 && results[highlightedIndex]) {
           handleSelect(results[highlightedIndex]);
         } else if (query.trim() && onTextSearch) {
-          onTextSearch(query);
-          setIsOpen(false);
+          submitSearch();
         }
         break;
       case "Escape":
@@ -127,6 +152,9 @@ export function VehicleSearchBar({
   };
 
   const clearSearch = () => {
+    submittedQuery.current = null;
+    requestVersion.current++;
+    setIsLoading(false);
     setQuery("");
     setResults([]);
     setIsOpen(false);
@@ -135,7 +163,7 @@ export function VehicleSearchBar({
   };
 
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
+    <div ref={containerRef} className={cn("relative text-brand-ink", className)}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -155,13 +183,26 @@ export function VehicleSearchBar({
               ? `Search parts for ${vehicleContext.year} ${vehicleContext.makeName} ${vehicleContext.modelName}...`
               : "Search by vehicle (2010 Hyundai Elantra) or part number..."
           }
-          className="pl-10 pr-8 bg-white text-brand-ink border-0 shadow-sm"
-          onChange={(e) => setQuery(e.target.value)}
+          className="pl-10 pr-20 bg-white text-brand-ink border-0 shadow-sm"
+          onChange={(e) => { submittedQuery.current = null; setQuery(e.target.value); }}
           onKeyDown={handleKeyDown}
-          onFocus={() => results.length > 0 && setIsOpen(true)}
+          onFocus={() => results.length > 0 && submittedQuery.current !== query.trim() && setIsOpen(true)}
         />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Search catalog"
+          title="Search"
+          disabled={!query.trim() || !onTextSearch}
+          onClick={submitSearch}
+          className="absolute right-8 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        >
+          <Search className="h-4 w-4" />
+        </Button>
         {query && (
           <button
+            type="button"
             aria-label="Clear search"
             onClick={clearSearch}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
