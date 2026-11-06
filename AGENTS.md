@@ -113,22 +113,27 @@ Every PR needs a Smoke plan and exact deployment settings inventory. Record
 desktop/mobile checks and any outstanding activation gate. Run agent-pr-finish
 and claude-handoff before handing the PR to its independent reviewer.
 
+Note: the D1492 text above is historical; the [D1575 amendment below](#d1575-hosting-amendment-brian-2026-11-06-850-am-est) defines the current on-prem activation branch.
+
 ## D1575 hosting amendment (Brian, 2026-11-06 8:50 AM EST)
 
 Amends D1492. Cloudflare Bot Fight Mode (free plan) blocks Vercel's server-side catalog calls to
 `staging.autrex.ca`, and no scoped exception is possible. Therefore:
 
-- The catalog-connected test site moves to our own staging VM 459 `roysauto-staging`, proposed host
-  `roys-staging.autrex.ca` (Cloudflare-proxied for visitors). Infra owns it and uses the same deploy
-  pattern as capautov3 staging. It reaches the VM 453 staging gateway over the LAN (Roy's -> VM 453 never crosses Cloudflare). Note: VM 453's own gateway
+- The catalog-connected test site runs on our staging VM 459 `roysauto-staging`, proposed host
+  `roys-staging.autrex.ca` (Cloudflare-proxied for visitors). Infra owns it.
+  [#9](https://github.com/capitalautoparts/auto-parts-storev3/pull/9) (on-prem runtime) and
+  [#11](https://github.com/capitalautoparts/auto-parts-storev3/pull/11) (deploy workflow) have merged;
+  VM 459 serves `staging` via #11's `.github/workflows/deploy-onprem-staging.yml`.
+  It reaches the VM 453 staging gateway over the LAN (Roy's -> VM 453 never crosses Cloudflare). Note: VM 453's own gateway
   still calls ERP at `https://staging.autopartserp.com`, which resolves to Cloudflare today, so the VM 453 -> ERP hop is
   server-to-server through Cloudflare (outside this repo; a later infra WP may move it to the LAN).
 - Vercel stays for design previews only (no catalog access needed or promised there).
 - The on-prem upstream is the fixed `http://192.168.88.233/api/erp` (VM 453 nginx on the LAN, plain
   HTTP, no Host header, no credentials). It is selected only when the non-secret deploy-target env
   `ROYS_ONPREM=1` is set together with `ROYS_CATALOG_PREVIEW_ENABLED=true` and `VERCEL` not `1`.
-  The code lands in the on-prem upstream PR (branch `agent/roys-onprem-catalog-upstream`, adds
-  `server/onprem.ts` and `docs/onprem-staging.md`); until it merges, the `staging.autrex.ca/api/erp`
-  constant is the only upstream. Still fixed upstreams only: no env-configurable URL, no fallback route.
+  `VERCEL=1` together with `ROYS_ONPREM=1` is denied before the activation-flag check, even in
+  local-development mode. The runtime is `server/onprem.ts`; see `docs/onprem-staging.md`.
+  Still fixed upstreams only: no env-configurable URL, no fallback route.
 - Checkout stays disabled. No credentials in the browser or this repo. Stub-response rejection,
   GET-only and the parameter allowlist are unchanged.
