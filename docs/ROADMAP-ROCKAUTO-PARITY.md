@@ -21,8 +21,8 @@ opens it.
 - ERP read-only inspection (`/srv/dev/AutoProPartsERP`, `rg` only): the public API routers
   under `server/src/routes/public-api/v1/*.ts`, and the browser allowlist in
   `/srv/dev/capautov3/src/lib/api/erp-browser-policy.ts`.
-- RockAuto: three normal page fetches from VM510 (home page, help page, one catalog page,
-  all HTTP 200). No crawling and no automation. The pages are heavy JS apps, so
+- RockAuto: two normal page fetches from VM510 (home page and help page, both HTTP 200;
+  a catalog-page fetch was attempted but not read). No crawling and no automation. The pages are heavy JS apps, so
   the behaviour column below combines what those pages showed with general knowledge,
   and I label it that way. What the pages showed: top nav "Part Catalog | Part Number
   Search | Tools & Universal Parts | Cart | Account"; footer links "Order Status &
