@@ -17,7 +17,9 @@ Agents change no Vercel, Cloudflare or DNS settings and have no authorized Verce
 ## D1575 amendment (Brian, 2026-11-06 8:50 AM EST)
 
 Cloudflare Bot Fight Mode blocks Vercel server-side calls to `staging.autrex.ca`. The catalog-connected test site moves to our own staging VM
-(proposed `roys-staging.autrex.ca`, infra-owned, deploy pattern like capautov3 staging) and reads ERP staging over the LAN, never through Cloudflare.
+(proposed `roys-staging.autrex.ca`, infra-owned, deploy pattern like capautov3 staging) and reaches the VM 453 staging gateway over the LAN, so the Roy's -> VM 453 hop never crosses Cloudflare. VM 453's own gateway still
+calls ERP at `https://staging.autopartserp.com` through Cloudflare today (server-to-server, outside this repo; a later infra WP may move
+it to the LAN). Do not assume the whole request path bypasses Cloudflare.
 Vercel becomes **design previews only**. The on-prem upstream is the fixed `http://192.168.88.233/api/erp` (VM 453 nginx on the LAN, plain HTTP, no Host header, no credentials).
 It is selected only when the non-secret deploy-target env `ROYS_ONPREM=1` is set together with `ROYS_CATALOG_PREVIEW_ENABLED=true`, and `VERCEL` is not `1`.
 The on-prem VM is 459 `roysauto-staging`, proposed host `roys-staging.autrex.ca`. The code lands in the on-prem upstream PR (branch `agent/roys-onprem-catalog-upstream`,

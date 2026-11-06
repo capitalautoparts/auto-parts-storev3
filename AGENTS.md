@@ -117,7 +117,9 @@ Amends D1492. Cloudflare Bot Fight Mode (free plan) blocks Vercel's server-side 
 
 - The catalog-connected test site moves to our own staging VM 459 `roysauto-staging`, proposed host
   `roys-staging.autrex.ca` (Cloudflare-proxied for visitors). Infra owns it and uses the same deploy
-  pattern as capautov3 staging. It reads ERP staging over the LAN, never through Cloudflare.
+  pattern as capautov3 staging. It reaches the VM 453 staging gateway over the LAN (Roy's -> VM 453 never crosses Cloudflare). Note: VM 453's own gateway
+  still calls ERP at `https://staging.autopartserp.com`, which resolves to Cloudflare today, so the VM 453 -> ERP hop is
+  server-to-server through Cloudflare (outside this repo; a later infra WP may move it to the LAN).
 - Vercel stays for design previews only (no catalog access needed or promised there).
 - The on-prem upstream is the fixed `http://192.168.88.233/api/erp` (VM 453 nginx on the LAN, plain
   HTTP, no Host header, no credentials). It is selected only when the non-secret deploy-target env

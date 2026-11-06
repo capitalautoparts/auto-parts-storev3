@@ -32,14 +32,16 @@ nonzero), `sub_model_id`, `drive_type_id`, `body_style_config_id`, `transmission
 
 Response (`SearchResult`):
 
-- `results: Part[]` where `Part` = `{ sku, slug?, part_number, name, brand_name, pricing?: { price: number|null, currency }, core_charge?: number | { amount? }, availability?: { status, quantity: number|null, lead_time_days? }, sellablePackQuantity?, image_url?, fitment_summary?, applications?: [{ submodel?, engine?, position?, drive_type?, notes?: string[], qualifiers?: [{ name?, value?, text? }] }], fitment_qualifiers?: [{ name, value }] }`
+- `results: Part[]` where `Part` = `{ sku, slug?, part_number, name, brand_name, pricing?: { price: number|null, currency }, core_charge?: number | { amount? }, availability?: { status, quantity: number|null, lead_time_days? }, sellablePackQuantity?, image_url?, fitment_summary?, applications?: [{ submodel?, engine?, position?, drive_type?, notes?: string[], qualifiers?: string[] }], fitment_qualifiers?: [{ name, value }] }`
 - `pagination: { total, page, has_more, total_is_exact?, sort_complete? }`
 - `facets?: { brands?: [{ brand_id, name, count }], part_types?: [{ id, name, count }] }`
 - `vehicle_dimensions?: [{ dimension, label, options: [{ id, name?, description?, label?, count? }] }]` (the UI offers every dimension except `engine_base_id`)
 
 Mapping (`mapErpPart`): `id = sku`; price is used only when `pricing.currency === 'CAD'` and a finite number >= 0, otherwise `null` and the UI
 shows "Price unavailable" (`priceLabel`); `position` and `specs` come from `fitment_qualifiers`; tier and warranty are not provided by the ERP
-payload and are not invented (warranty is `''`, `tier` unset); untracked availability shows "Available to order" (the default lead time is not an ETA).
+payload and are not invented (warranty is `''`, `tier` unset); `applications[].qualifiers` are plain strings joined into
+`applicationNotes`, and `fitment_summary` becomes `fitmentSummary`. Search results carry no per-application year/make/model, so the
+adapter never turns the selected vehicle into a confirmed fitment (`fitments` is `[]`); untracked availability shows "Available to order" (the default lead time is not an ETA).
 
 ## Fitment tree call sequence
 

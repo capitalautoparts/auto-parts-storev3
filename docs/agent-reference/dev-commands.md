@@ -34,7 +34,7 @@ Do not start a second heavy job because the first is slow; check `--queue` and w
 | `npm run build` | `npm run typecheck && vite build` (output `dist/`) | `dev-remote --heavy npm run build` |
 | `npm run preview` | `vite preview` of `dist/` (also serves `/api/catalog`) | `dev-remote --service npm run preview` |
 | `npm run lint` | `eslint . --ext ts,tsx ...` | Script exists but `eslint` is not in `package.json` devDependencies and CI does not run it; treat as unverified |
-| `npm run test:browser` | `node scripts/browser-smoke.mjs`: Playwright **Firefox** against built assets served by `vite preview`, real ERP data, no interception | After `npm run build`, on VM511 only |
+| `npm run test:browser` | `node scripts/browser-smoke.mjs`: Playwright **Firefox** against built assets served by `vite preview`, real ERP data for the visual journey (no interception); a final, separate browser context aborts the first `categories`/`makes` requests to test Retry against real staging | After `npm run build`, on VM511 only |
 
 CI (`.github/workflows/catalog-check.yml`): `npm ci`, `npm test -- --run`, `npm run build` on Node 22.
 
@@ -44,7 +44,8 @@ CI (`.github/workflows/catalog-check.yml`): `npm ci`, `npm test -- --run`, `npm 
    `ROYS_SMOKE_FUNCTION_ENTRYPOINT` can point at the packaged `api/catalog.js` instead of the Vite source adapter; it still needs the normal activation variables.
 2. For ad-hoc screenshots use Playwright **Firefox** (`@playwright/test` 1.61.1 is a devDependency) with viewports 1440x900 and 390x844 against `vite preview`. Chromium does not
    launch on these hosts. Assert on rendered content (a heading, tree rows), never on exit code alone: a blank page also exits 0.
-3. Do not stub `/api/**` for visual proof; it screenshots a mock. Compare with the mockups listed in `design-system.md`.
+3. Do not stub `/api/**` for visual proof; it screenshots a mock. Fault injection (aborting a request to test Retry) is allowed only in a
+   separate context after the real-data journey, as `scripts/browser-smoke.mjs` does. Compare with the mockups listed in `design-system.md`.
 4. `scripts/reference-review.mjs` is a read-only comparison of the Vercel site and rockauto.com (VM511 only); public pages, normal viewing only.
 
 ## Git and PR

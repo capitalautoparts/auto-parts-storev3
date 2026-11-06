@@ -15,7 +15,7 @@ Radix UI primitives wrapped in `src/components/ui`, `lucide-react` icons, `sonne
 | `components/Header.tsx` | Top bar, nav placeholders (Help, Order Status, Promotions, Account, Tools, VIN Lookup), search, cart/wishlist counts |
 | `components/VehicleSearchBar.tsx` | Search box using `vehicleApi.search` / `searchCategories` (vehicle "2013 Hyundai", part number/keyword, category) |
 | `components/TreeSidebar.tsx` | Year > Make > Model > Engine > Category tree; exposes `expandToVehicle` / `expandToCategory` via ref; emits `PartSelection` |
-| `components/PartsTable.tsx` | Result rows: image, tier badge, part, details, price, Add, Details, wishlist. `part.tier` is never set by the ERP mapper, so the tier cell shows an em dash today |
+| `components/PartsTable.tsx` | Result rows: image, tier badge, part, details, price, Add, Details, wishlist. `part.tier` is never set by the ERP mapper, so there is no Tier column; a tier badge renders only when a part supplies `tier` (roadmap: hidden until ERP ask E4). On mobile the row is a grid that keeps price and Add on screen |
 | `components/ProductDetailModal.tsx`, `ProductImage.tsx` | Part detail dialog, image with fallback |
 | `components/RightCartPanel.tsx` | Quick Cart, quantity controls, address forms, mock shipping options (checkout disabled; nothing is placed or charged) |
 | `components/wishlist/*`, `components/auth/AuthModal.tsx` | Wishlist button/panel; auth modal (auth is disabled) |
