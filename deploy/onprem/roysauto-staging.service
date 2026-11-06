@@ -11,9 +11,9 @@ User=roys
 Group=roys
 WorkingDirectory=/opt/roysauto/staging/current
 EnvironmentFile=/opt/roysauto/staging/shared/roysauto.env
-Environment=PORT=3201
+Environment=PORT=3200
 Environment=HOST=127.0.0.1
-ExecStart=/usr/bin/node /opt/roysauto/staging/current/server/onprem-server.ts
+ExecStart=/usr/bin/node --experimental-strip-types /opt/roysauto/staging/current/server/onprem.ts
 Restart=always
 RestartSec=5
 TimeoutStopSec=30

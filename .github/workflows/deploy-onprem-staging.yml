@@ -32,7 +32,7 @@ permissions:
 env:
   ROOT: /opt/roysauto/staging
   SERVICE: roysauto-staging.service
-  API_PORT: '3201'
+  API_PORT: '3200'
   PUBLIC_URL: https://roys-staging.autrex.ca/
 
 jobs:
@@ -95,25 +95,25 @@ jobs:
           health=""
           for _ in $(seq 1 20); do
             health="$(curl -fsS -m 5 "http://127.0.0.1:$API_PORT/healthz" || true)"
-            [ "$(jq -r '.revision // empty' <<<"$health" 2>/dev/null)" = "$RELEASE" ] && break
+            [ "$(jq -r '.status // empty' <<<"$health" 2>/dev/null)" = ok ] && break
             sleep 1
           done
           echo "healthz: $health"
-          [ "$(jq -r .revision <<<"$health")" = "$RELEASE" ] || { echo "::error::service did not come up on $RELEASE"; exit 1; }
+          [ "$(jq -r .status <<<"$health")" = ok ] || { echo "::error::service did not come up"; exit 1; }
+
+          served="$(curl -fsS -m 5 http://127.0.0.1/__revision)"
+          [ "$served" = "$RELEASE" ] || { echo "::error::nginx serves $served, expected $RELEASE"; exit 1; }
 
           code="$(curl -sS -o /tmp/roys-index.html -w '%{http_code}' -m 10 http://127.0.0.1/)"
           [ "$code" = 200 ] && grep -q '<div id="root"' /tmp/roys-index.html \
             || { echo "::error::nginx / returned $code or no app shell"; exit 1; }
 
+          # Through nginx -> on-prem API -> VM 453 gateway over the LAN.
           code="$(curl -sS -o /tmp/roys-years.json -w '%{http_code}' -m 20 'http://127.0.0.1/api/catalog?resource=years')"
-          if [ "$(jq -r .catalogEnabled <<<"$health")" = true ]; then
-            [ "$code" = 200 ] && jq -e '.years | length > 0' /tmp/roys-years.json >/dev/null \
-              || { echo "::error::catalog years returned $code"; head -c 300 /tmp/roys-years.json; exit 1; }
-          else
-            echo "::warning::catalog gate is closed on this build (HTTP $code); the site shell is up"
-          fi
+          [ "$code" = 200 ] && jq -e '.years | length > 0' /tmp/roys-years.json >/dev/null \
+            || { echo "::error::catalog years returned $code"; head -c 300 /tmp/roys-years.json; exit 1; }
           echo "### roysauto-staging $RELEASE" >> "$GITHUB_STEP_SUMMARY"
-          echo "healthz \`$health\`, / 200, catalog years HTTP $code" >> "$GITHUB_STEP_SUMMARY"
+          echo "healthz \`$health\`, / 200, catalog years 200" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Roll back on failed smoke
         if: ${{ failure() && steps.publish.outputs.previous != '' }}

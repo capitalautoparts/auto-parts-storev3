@@ -17,8 +17,8 @@ like capautov3's `staging.autrex.ca`; Vercel stays for design previews only.
 ```
 visitor -> Cloudflare edge (TLS, *.autrex.ca)
         -> cloudflared on node0 (.253) / node1 (.252)  ingress: roys-staging.autrex.ca -> http://192.168.88.250
-        -> nginx :80 on VM 459   static dist/ + /api/catalog, /healthz -> 127.0.0.1:3201
-        -> roysauto-staging.service (node server/onprem-server.ts)
+        -> nginx :80 on VM 459   static dist/ + /api/catalog, /healthz -> 127.0.0.1:3200
+        -> roysauto-staging.service (node --experimental-strip-types server/onprem.ts, PR #9)
         -> http://192.168.88.233/api/erp (VM 453 gateway, LAN) -> ERP staging
 ```
 
@@ -44,11 +44,11 @@ visitor -> Cloudflare edge (TLS, *.autrex.ca)
 NODE_ENV=production
 ROYS_ONPREM=1
 ROYS_CATALOG_PREVIEW_ENABLED=true
-ROYS_CATALOG_UPSTREAM=http://192.168.88.233/api/erp
 ```
 
-`ROYS_CATALOG_UPSTREAM` is informational; the proxy's upstream stays a fixed
-constant in `server/catalog-proxy.ts` (selected by `ROYS_ONPREM=1`).
+The upstream is never an env value: it is the fixed constant in
+`server/catalog-proxy.ts`, selected by `ROYS_ONPREM=1` (PR #9, `docs/onprem-staging.md`).
+The unit sets `PORT=3200 HOST=127.0.0.1`.
 
 ## Files in this folder (installed by infra, not by CI)
 
@@ -63,8 +63,8 @@ After changing either: `nginx -t && systemctl reload nginx`, or
 
 `.github/workflows/deploy-onprem-staging.yml`, on push to `staging` or manual
 dispatch: `npm ci`, tests, build, publish `releases/<sha12>`, flip `current`,
-restart, smoke `/healthz` (revision), `/` (app shell) and
-`/api/catalog?resource=years` (required once the catalog gate is open). A failed
+restart, smoke `/healthz` (`{"status":"ok"}`), `/__revision` (nginx serves the new
+release), `/` (app shell) and `/api/catalog?resource=years` (non-empty years). A failed
 smoke re-points `current` at the previous release and restarts. Keeps current plus
 three older releases.
 
