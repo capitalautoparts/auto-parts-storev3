@@ -6,6 +6,8 @@ import { RightCartPanel } from '@/components/RightCartPanel';
 import { TreeSidebar, type PartSelection, type TreeSidebarHandle, type VehicleExpansion } from '@/components/TreeSidebar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Fragment } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { toast, Toaster } from 'sonner';
 import { Loader2, ShoppingCart } from 'lucide-react';
@@ -44,7 +46,7 @@ export default function App() {
   const scopedCategory = searchQuery ? undefined : selectedFitment?.category;
   useEffect(() => {
     if (scopedCategory || searchQuery.length >= 2) resultsSection.current?.scrollIntoView({ block: 'start' });
-  }, [scopedCategory?.slug, searchQuery]);
+  }, [scopedCategory?.slug, searchQuery, vehicleContext]);
   const { data, isLoading, error, refetch } = useQuery(
     () => partsApi.search({ q: searchQuery || undefined, category: scopedCategory, vehicle: vehicleContext, page, filters }),
     { enabled: !!scopedCategory || searchQuery.trim().length >= 2, deps: [scopedCategory?.slug, vehicleContext, searchQuery, page, filters] },
@@ -52,17 +54,31 @@ export default function App() {
   const { data: cart, refetch: refreshCart } = useQuery(() => cartApi.get('catalog-test'));
 
   function resetResults() { setFilters({}); setPage(1); }
-  function selectPartType(selection: PartSelection) {
-    setSelectedFitment(selection); setSearchQuery(''); resetResults();
-  }
-  function expandVehicle(vehicle: VehicleExpansion) {
-    setExpandedVehicle(vehicle); setSelectedFitment(null); setSearchQuery(''); resetResults();
+  function rememberVehicle(vehicle: VehicleExpansion) {
+    setExpandedVehicle(vehicle);
     if (!saveStorage(VEHICLE_KEY, JSON.stringify(vehicle))) toast.info('Your vehicle could not be saved in this browser.');
+  }
+  function selectPartType(selection: PartSelection) {
+    resetResults();
+    rememberVehicle({ year: selection.year, makeId: selection.make.id, makeName: selection.make.name,
+      modelId: selection.model.id, modelName: selection.model.name, engineId: selection.engine.id, engineName: selection.engine.name });
+    setSelectedFitment(selection); setSearchQuery('');
+  }
+  function selectVehicle(vehicle: VehicleExpansion) {
+    resetResults(); rememberVehicle(vehicle); setSelectedFitment(null); setSearchQuery('');
+  }
+  function returnTo(target: 'categories' | 'engines' | 'years') {
+    if (vehicleContext) tree.current?.revealSelection(target, vehicleContext, selectedFitment?.category);
   }
   function textSearch(query: string) { setSearchQuery(query.trim()); resetResults(); }
   function vehicleSearch(result: VehicleSearchResult) {
+    resetResults(); setSelectedFitment(null); setSearchQuery('');
+    if (result.year !== undefined && result.makeId !== undefined && result.makeName !== undefined
+      && result.modelId !== undefined && result.modelName !== undefined && result.engineId !== undefined && result.engineName !== undefined) {
+      rememberVehicle({ year: result.year, makeId: result.makeId, makeName: result.makeName,
+        modelId: result.modelId, modelName: result.modelName, engineId: result.engineId, engineName: result.engineName });
+    } else setExpandedVehicle(null);
     tree.current?.expandToVehicle(result);
-    setSelectedFitment(null); setExpandedVehicle(null); setSearchQuery(''); resetResults();
   }
   async function changeCart(action: () => Promise<unknown>, message?: string) {
     try { await action(); await refreshCart(); if (message) toast.success(message); }
@@ -86,8 +102,8 @@ export default function App() {
       <p className="mt-1 text-xs text-muted-foreground">Check engine, submodel, position and application notes before choosing a part.</p>
     </div>
     <div className="flex flex-wrap gap-3 mb-3 text-xs">
-      <label>Brand<select aria-label="Brand" className="block border rounded p-1 max-w-48 bg-white" value={filters.brand ?? ''} onChange={event => changeFilter('brand', event.target.value)}><option value="">All brands</option>{data?.facets?.brands?.map(brand => <option key={brand.brand_id} value={brand.brand_id}>{brand.name}</option>)}</select></label>
-      {data?.vehicle_dimensions?.filter(dimension => DIMENSIONS.includes(dimension.dimension as typeof DIMENSIONS[number]) && dimension.dimension !== 'engine_base_id').map(dimension => <label key={dimension.dimension}>{dimension.label}<select aria-label={dimension.label} className="block border rounded p-1 bg-white" value={filters[dimension.dimension] ?? ''} onChange={event => changeFilter(dimension.dimension, event.target.value)}><option value="">All — check application</option>{dimension.options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>)}
+      <label className="min-w-0 max-w-full">Brand<select aria-label="Brand" className="block border rounded p-1 max-w-48 bg-white" value={filters.brand ?? ''} onChange={event => changeFilter('brand', event.target.value)}><option value="">All brands</option>{data?.facets?.brands?.map(brand => <option key={brand.brand_id} value={brand.brand_id}>{brand.name}</option>)}</select></label>
+      {data?.vehicle_dimensions?.filter(dimension => DIMENSIONS.includes(dimension.dimension as typeof DIMENSIONS[number]) && dimension.dimension !== 'engine_base_id').map(dimension => <label className="min-w-0 max-w-full" key={dimension.dimension}>{dimension.label}<select aria-label={dimension.label} className="block border rounded p-1 max-w-full bg-white" value={filters[dimension.dimension] ?? ''} onChange={event => changeFilter(dimension.dimension, event.target.value)}><option value="">All — check application</option>{dimension.options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>)}
       <label className="flex items-center gap-1"><input type="checkbox" checked={filters.in_stock_only === 'true'} onChange={event => changeFilter('in_stock_only', event.target.checked ? 'true' : '')} />In stock only</label>
       <button className="underline" onClick={() => { setFilters({}); setPage(1); }}>Clear filters</button>
     </div>
@@ -108,12 +124,33 @@ export default function App() {
       onCatalogClick={() => { setSearchQuery(''); resetResults(); }} onCartClick={() => setMobileCartOpen(true)} />
     <div className="shrink-0 px-4 py-1 border-b text-xs text-muted-foreground flex flex-wrap items-center gap-3">
       <span>Catalog test · Canada / CAD · ERP staging · Checkout disabled</span>
-      {vehicleContext && <span>{vehicleContext.year} {vehicleContext.makeName} {vehicleContext.modelName}</span>}
+      {vehicleContext && <div className="w-full min-w-0 flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="selected-context">
+        <Breadcrumb aria-label="Selected vehicle and category" className="min-w-0 flex-1 basis-full lg:basis-auto">
+          <BreadcrumbList className="text-xs gap-1">
+            {[{ label: String(vehicleContext.year), target: 'years' as const },
+              { label: vehicleContext.makeName, target: 'years' as const },
+              { label: vehicleContext.modelName, target: 'engines' as const },
+              { label: vehicleContext.engineName ?? 'All engines', target: 'categories' as const },
+              ...(scopedCategory ? [{ label: scopedCategory.name, target: 'categories' as const }] : []),
+            ].map((item, index, items) => <Fragment key={index}>
+              {index > 0 && <BreadcrumbSeparator />}
+              <BreadcrumbItem className="min-w-0 max-w-full">
+                <BreadcrumbLink asChild><button className="text-left break-words" aria-current={index === items.length - 1 ? 'location' : undefined} onClick={() => returnTo(item.target)}>{item.label}</button></BreadcrumbLink>
+              </BreadcrumbItem>
+            </Fragment>)}
+          </BreadcrumbList>
+        </Breadcrumb>
+        <div className="flex flex-wrap gap-2" aria-label="Return to catalog choices">
+          <Button size="sm" variant="outline" onClick={() => returnTo('categories')}>Categories</Button>
+          <Button size="sm" variant="outline" onClick={() => returnTo('engines')}>Change engine</Button>
+          <Button size="sm" variant="outline" onClick={() => returnTo('years')}>Change vehicle</Button>
+        </div>
+      </div>}
     </div>
     <div className="flex-1 flex flex-row overflow-hidden">
       <main className="flex-1 min-w-0 overflow-auto p-4 pb-24 lg:pb-4">
         {searchQuery && <div className="mb-6">{renderParts()}<button className="text-sm underline my-3" onClick={() => textSearch('')}>Return to vehicle catalog</button></div>}
-        <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleExpand={expandVehicle}
+        <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleSelect={selectVehicle} activeVehicle={expandedVehicle} selectedFitment={selectedFitment}
           renderPartsInline={() => !searchQuery && selectedFitment ? renderParts() : null} />
       </main>
       <aside className="hidden lg:block" aria-label="Quick Cart"><RightCartPanel {...cartProps} /></aside>

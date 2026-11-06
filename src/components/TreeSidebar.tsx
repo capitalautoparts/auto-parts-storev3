@@ -1,4 +1,4 @@
-import { useState, useImperativeHandle, forwardRef } from "react";
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -9,6 +9,7 @@ import {
   type VehicleEngine,
   type Category,
   type VehicleSearchResult,
+  type VehicleContext,
 } from "@/lib/api";
 import { useQuery } from "@/lib/hooks";
 
@@ -23,6 +24,7 @@ export interface PartSelection {
 export interface TreeSidebarHandle {
   expandToVehicle: (result: VehicleSearchResult) => void;
   expandToCategory: (result: VehicleSearchResult) => void;
+  revealSelection: (target: 'categories' | 'engines' | 'years', vehicle: VehicleContext, category?: Category) => void;
 }
 
 export interface VehicleExpansion {
@@ -37,32 +39,61 @@ export interface VehicleExpansion {
 
 interface TreeSidebarProps {
   onPartTypeSelect: (selection: PartSelection) => void;
-  onVehicleExpand?: (vehicle: VehicleExpansion) => void;
+  onVehicleSelect: (vehicle: VehicleExpansion) => void;
+  activeVehicle: VehicleExpansion | null;
+  selectedFitment: PartSelection | null;
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
 }
 
 export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
-  function TreeSidebar({ onPartTypeSelect, onVehicleExpand, renderPartsInline }, ref) {
+  function TreeSidebar({ onPartTypeSelect, onVehicleSelect, activeVehicle, selectedFitment, renderPartsInline }, ref) {
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
   const [expandedMakes, setExpandedMakes] = useState<Set<string>>(new Set());
   const [expandedModels, setExpandedModels] = useState<Set<string>>(new Set());
   const [expandedEngines, setExpandedEngines] = useState<Set<string>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  const [selectedPath, setSelectedPath] = useState<{
-    year?: number;
-    makeId?: number;
-    modelId?: number;
-    engineId?: number;
-    categoryId?: number;
-  }>({});
-  const [selectedFitment, setSelectedFitment] = useState<PartSelection | null>(null);
+  const selectedPath = activeVehicle ? { year: activeVehicle.year, makeId: activeVehicle.makeId,
+    modelId: activeVehicle.modelId, engineId: activeVehicle.engineId, categoryId: selectedFitment?.category.id } : {};
+  const root = useRef<HTMLDivElement>(null);
+  const [focusTarget, setFocusTarget] = useState<string | null>(null);
+  // Ancestors can remount while their cached reference data loads. Focus once the
+  // requested native control exists, without a timing guess or another request.
+  useEffect(() => {
+    if (!focusTarget || !root.current) return;
+    const focus = () => {
+      const target = document.getElementById(focusTarget);
+      const control = target?.matches('button') ? target : target?.querySelector('button');
+      if (!control || !root.current?.contains(control) || control.closest('[hidden]')) return false;
+      control.focus(); control.scrollIntoView({ block: 'center' }); setFocusTarget(null); return true;
+    };
+    if (focus()) return;
+    const observer = new MutationObserver(() => { if (focus()) observer.disconnect(); });
+    observer.observe(root.current, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+    return () => observer.disconnect();
+  }, [focusTarget]);
 
   const { data: yearsData, isLoading: yearsLoading, error: yearsError, refetch: retryYears } = useQuery(() => vehicleApi.getYears());
   const { data: categoriesData, error: categoriesError, refetch: retryCategories } = useQuery(() => categoryApi.getAll());
 
   // Expose expandToVehicle and expandToCategory functions via ref
   useImperativeHandle(ref, () => ({
+    revealSelection: (target, vehicle, category) => {
+      const { year, makeId, modelId, engineId } = vehicle;
+      if (target !== 'years') {
+        setExpandedYears(prev => new Set(prev).add(year));
+        setExpandedMakes(prev => new Set(prev).add(`${year}-${makeId}`));
+        setExpandedModels(prev => new Set(prev).add(`${year}-${makeId}-${modelId}`));
+      }
+      const engineKey = `${year}-${makeId}-${modelId}-${engineId}`;
+      if (target === 'categories' && engineId !== undefined) {
+        setExpandedEngines(prev => new Set(prev).add(engineKey));
+        if (category?.parentId) setExpandedCategories(prev => new Set(prev).add(`${engineKey}-${category.parentId}`));
+      }
+      setFocusTarget(target === 'years' ? `vehicle-year-${year}` : engineId === undefined
+        ? `vehicle-model-${year}-${makeId}-${modelId}` : target === 'engines' ? `vehicle-engine-${engineKey}`
+        : category ? `vehicle-category-${engineKey}-${category.parentId ?? category.id}` : `vehicle-categories-${engineKey}`);
+    },
     expandToVehicle: (result: VehicleSearchResult) => {
       if (!result.year) return;
 
@@ -84,13 +115,6 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
         setExpandedEngines(prev => new Set(prev).add(`${result.year}-${result.makeId}-${result.modelId}-${result.engineId}`));
       }
 
-      // Update selected path for highlighting
-      setSelectedPath({
-        year: result.year,
-        makeId: result.makeId,
-        modelId: result.modelId,
-        engineId: result.engineId,
-      });
     },
     expandToCategory: (result: VehicleSearchResult) => {
       if (!result.year || !result.makeId || !result.modelId || result.engineId === undefined || !result.categoryId) return;
@@ -110,8 +134,6 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
         engine: { id: result.engineId, name: result.engineName!, modelId: result.modelId },
         category,
       };
-      setSelectedPath({ year: result.year, makeId: result.makeId, modelId: result.modelId, engineId: result.engineId, categoryId: category.id });
-      setSelectedFitment(selection);
       onPartTypeSelect(selection);
     },
   }));
@@ -148,21 +170,16 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
     setExpandedModels(newExpanded);
   };
 
-  const toggleEngine = (engineKey: string, vehicleInfo?: VehicleExpansion) => {
-    const newExpanded = new Set(expandedEngines);
-    const isExpanding = !newExpanded.has(engineKey);
-    if (isExpanding) {
-      newExpanded.add(engineKey);
-      setSelectedFitment(null);
-      setSelectedPath({});
-      // Notify parent when engine is expanded
-      if (vehicleInfo && onVehicleExpand) {
-        onVehicleExpand(vehicleInfo);
-      }
-    } else {
-      newExpanded.delete(engineKey);
-    }
-    setExpandedEngines(newExpanded);
+  const toggleEngine = (engineKey: string) => {
+    setExpandedEngines(prev => {
+      const next = new Set(prev);
+      if (next.has(engineKey)) next.delete(engineKey); else next.add(engineKey);
+      return next;
+    });
+  };
+  const selectEngine = (vehicle: VehicleExpansion) => {
+    setExpandedEngines(prev => new Set(prev).add(`${vehicle.year}-${vehicle.makeId}-${vehicle.modelId}-${vehicle.engineId}`));
+    onVehicleSelect(vehicle);
   };
 
   const toggleCategory = (categoryKey: string) => {
@@ -176,14 +193,6 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
   };
 
   const handlePartTypeClick = (selection: PartSelection) => {
-    setSelectedPath({
-      year: selection.year,
-      makeId: selection.make.id,
-      modelId: selection.model.id,
-      engineId: selection.engine.id,
-      categoryId: selection.category.id,
-    });
-    setSelectedFitment(selection);
     onPartTypeSelect(selection);
   };
 
@@ -195,7 +204,7 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
     : [];
 
   return (
-    <div className="w-full min-w-0" data-testid="vehicle-tree">
+    <div ref={root} className="w-full min-w-0" data-testid="vehicle-tree">
       <div className="py-2 text-xs uppercase tracking-[0.3em] font-display text-foreground font-semibold">
         Part Catalog
       </div>
@@ -223,6 +232,7 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
               onToggleMake={toggleMake}
               onToggleModel={toggleModel}
               onToggleEngine={toggleEngine}
+              onSelectEngine={selectEngine}
               onToggleCategory={toggleCategory}
               onPartTypeClick={handlePartTypeClick}
             />
@@ -246,7 +256,8 @@ interface YearNodeProps {
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onToggleMake: (year: number, makeId: number) => void;
   onToggleModel: (year: number, makeId: number, modelId: number) => void;
-  onToggleEngine: (engineKey: string, vehicleInfo?: VehicleExpansion) => void;
+  onToggleEngine: (engineKey: string) => void;
+  onSelectEngine: (vehicle: VehicleExpansion) => void;
   onToggleCategory: (categoryKey: string) => void;
   onPartTypeClick: (selection: PartSelection) => void;
 }
@@ -266,6 +277,7 @@ function YearNode({
   onToggleMake,
   onToggleModel,
   onToggleEngine,
+  onSelectEngine,
   onToggleCategory,
   onPartTypeClick,
 }: YearNodeProps) {
@@ -277,6 +289,7 @@ function YearNode({
   return (
     <div data-vehicle-year={year}>
       <button
+        id={`vehicle-year-${year}`} aria-expanded={isExpanded} aria-controls={`vehicle-year-${year}-children`}
         onClick={onToggle}
         className="w-full text-left px-2 py-1 hover:bg-muted rounded flex items-center gap-1"
       >
@@ -288,6 +301,7 @@ function YearNode({
         <span>{year}</span>
       </button>
 
+      <div id={`vehicle-year-${year}-children`} hidden={!isExpanded}>
       {isExpanded && <BranchStatus loading={isLoading} error={error} onRetry={refetch} />}
       {isExpanded && makesData && (
         <div className="ml-3">
@@ -307,12 +321,14 @@ function YearNode({
               renderPartsInline={renderPartsInline}
               onToggleModel={onToggleModel}
               onToggleEngine={onToggleEngine}
+              onSelectEngine={onSelectEngine}
               onToggleCategory={onToggleCategory}
               onPartTypeClick={onPartTypeClick}
             />
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -330,7 +346,8 @@ interface MakeNodeProps {
   selectedFitment: PartSelection | null;
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
   onToggleModel: (year: number, makeId: number, modelId: number) => void;
-  onToggleEngine: (engineKey: string, vehicleInfo?: VehicleExpansion) => void;
+  onToggleEngine: (engineKey: string) => void;
+  onSelectEngine: (vehicle: VehicleExpansion) => void;
   onToggleCategory: (categoryKey: string) => void;
   onPartTypeClick: (selection: PartSelection) => void;
 }
@@ -349,6 +366,7 @@ function MakeNode({
   renderPartsInline,
   onToggleModel,
   onToggleEngine,
+  onSelectEngine,
   onToggleCategory,
   onPartTypeClick,
 }: MakeNodeProps) {
@@ -360,6 +378,7 @@ function MakeNode({
   return (
     <div>
       <button
+        id={`vehicle-make-${year}-${make.id}`} aria-expanded={isExpanded} aria-controls={`vehicle-make-${year}-${make.id}-children`}
         onClick={onToggle}
         className="w-full text-left px-2 py-1 hover:bg-muted rounded flex items-center gap-1"
       >
@@ -376,6 +395,7 @@ function MakeNode({
         <span>{make.name}</span>
       </button>
 
+      <div id={`vehicle-make-${year}-${make.id}-children`} hidden={!isExpanded}>
       {isExpanded && <BranchStatus loading={isLoading} error={error} onRetry={refetch} />}
       {isExpanded && modelsData && (
         <div className="ml-3">
@@ -395,12 +415,14 @@ function MakeNode({
               selectedFitment={selectedFitment}
               renderPartsInline={renderPartsInline}
               onToggleEngine={onToggleEngine}
+              onSelectEngine={onSelectEngine}
               onToggleCategory={onToggleCategory}
               onPartTypeClick={onPartTypeClick}
             />
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -418,7 +440,8 @@ interface ModelNodeProps {
   selectedPath: any;
   selectedFitment: PartSelection | null;
   renderPartsInline?: (selection: PartSelection) => React.ReactNode;
-  onToggleEngine: (engineKey: string, vehicleInfo?: VehicleExpansion) => void;
+  onToggleEngine: (engineKey: string) => void;
+  onSelectEngine: (vehicle: VehicleExpansion) => void;
   onToggleCategory: (categoryKey: string) => void;
   onPartTypeClick: (selection: PartSelection) => void;
 }
@@ -436,6 +459,7 @@ function ModelNode({
   selectedFitment,
   renderPartsInline,
   onToggleEngine,
+  onSelectEngine,
   onToggleCategory,
   onPartTypeClick,
 }: ModelNodeProps) {
@@ -447,6 +471,7 @@ function ModelNode({
   return (
     <div>
       <button
+        id={`vehicle-model-${year}-${make.id}-${model.id}`} aria-expanded={isExpanded} aria-controls={`vehicle-model-${year}-${make.id}-${model.id}-children`}
         onClick={onToggle}
         className="w-full text-left px-2 py-1 hover:bg-muted rounded flex items-center gap-1"
       >
@@ -458,6 +483,7 @@ function ModelNode({
         <span>{model.name}</span>
       </button>
 
+      <div id={`vehicle-model-${year}-${make.id}-${model.id}-children`} hidden={!isExpanded}>
       {isExpanded && <BranchStatus loading={isLoading} error={error} onRetry={refetch} />}
       {isExpanded && enginesData && (
         <div className="ml-3">
@@ -469,7 +495,8 @@ function ModelNode({
               make={make}
               model={model}
               isExpanded={expandedEngines.has(`${year}-${make.id}-${model.id}-${engine.id}`)}
-              onToggle={() => onToggleEngine(`${year}-${make.id}-${model.id}-${engine.id}`, {
+              onToggle={() => onToggleEngine(`${year}-${make.id}-${model.id}-${engine.id}`)}
+              onSelect={() => onSelectEngine({
                 year,
                 makeId: make.id,
                 makeName: make.name,
@@ -489,6 +516,7 @@ function ModelNode({
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -500,6 +528,7 @@ interface EngineNodeProps {
   model: VehicleModel;
   isExpanded: boolean;
   onToggle: () => void;
+  onSelect: () => void;
   expandedCategories: Set<string>;
   categoryTree: any[];
   selectedPath: any;
@@ -510,6 +539,7 @@ interface EngineNodeProps {
 }
 
 function EngineNode({
+  onSelect,
   engine,
   year,
   make,
@@ -524,20 +554,20 @@ function EngineNode({
   onToggleCategory,
   onPartTypeClick,
 }: EngineNodeProps) {
+  const engineKey = `${year}-${make.id}-${model.id}-${engine.id}`;
+  const isCurrent = selectedPath.year === year && selectedPath.makeId === make.id
+    && selectedPath.modelId === model.id && selectedPath.engineId === engine.id;
   return (
-    <div>
-      <button
-        onClick={onToggle}
-        className="w-full text-left px-2 py-1 hover:bg-muted rounded flex items-center gap-1"
-      >
-        {isExpanded ? (
-          <ChevronDown className="h-3 w-3 flex-shrink-0" />
-        ) : (
-          <ChevronRight className="h-3 w-3 flex-shrink-0" />
-        )}
-        <span>{engine.name}</span>
+    <div className="grid grid-cols-[auto_minmax(0,1fr)]">
+      <button onClick={onToggle} aria-label={`${isExpanded ? 'Collapse' : 'Expand'} categories for ${engine.name}`}
+        aria-expanded={isExpanded} aria-controls={`vehicle-categories-${engineKey}`}
+        className={cn("p-2 rounded-l flex items-center justify-center hover:bg-muted", isCurrent && "bg-accent")}>
+        {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
       </button>
+      <button id={`vehicle-engine-${engineKey}`} onClick={onSelect} title={`Choose ${engine.name}`} aria-current={isCurrent ? 'true' : undefined}
+        className={cn("min-w-0 text-left px-2 py-1 rounded-r break-words hover:bg-muted", isCurrent && "bg-accent font-semibold")}>{engine.name}</button>
 
+      <div id={`vehicle-categories-${engineKey}`} className="col-span-2 min-w-0" hidden={!isExpanded}>
       {isExpanded && (
         <div className="ml-3">
           {categoryTree.map((category) => (
@@ -559,6 +589,7 @@ function EngineNode({
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -601,6 +632,10 @@ function CategoryNode({
   return (
     <div>
       <button
+        id={`vehicle-category-${year}-${make.id}-${model.id}-${engineId}-${category.id}`}
+        aria-expanded={hasChildren ? isExpanded : undefined}
+        aria-controls={hasChildren ? `vehicle-category-${year}-${make.id}-${model.id}-${engineId}-${category.id}-children` : undefined}
+        aria-current={isThisCategorySelected ? 'true' : undefined}
         onClick={() => {
           if (hasChildren) {
             onToggle();
@@ -637,6 +672,7 @@ function CategoryNode({
         </div>
       )}
 
+      <div id={`vehicle-category-${year}-${make.id}-${model.id}-${engineId}-${category.id}-children`} hidden={!isExpanded}>
       {isExpanded && hasChildren && (
         <div className="ml-3">
           <BranchStatus loading={isLoading} error={error} onRetry={refetch} />
@@ -646,6 +682,7 @@ function CategoryNode({
             return (
               <div key={child.id}>
                 <button
+                  aria-current={isChildSelected ? 'true' : undefined}
                   onClick={() =>
                     onPartTypeClick({
                       year,
@@ -674,6 +711,7 @@ function CategoryNode({
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }
