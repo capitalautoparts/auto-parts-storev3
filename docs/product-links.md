@@ -80,43 +80,46 @@ This is product HTML plumbing, not a claim of complete SPA SEO: catalog search,
 vehicle pages, sitemaps, indexing policy and a production canonical origin are
 outside this work package.
 
-## Integration gate: PR9 and PR11 are not yet on staging
+## Integrated Node and nginx source
 
-This branch starts at `origin/staging` c7159f8. PR9 owns the fixed on-prem LAN
-upstream and Node server; PR11 owns nginx and the release workflow. Their
-unmerged implementation has not been copied here. The product HTML handler is
-mounted in Vite dev/preview, and accepts a template callback so it can be added
-to the existing Node process after those dependencies land.
+The task branch merged `origin/staging` through d7f9530, including PR9's fixed
+LAN adapter, PR10's guidance, PR11's deployment files, PR13's mobile/search/fitment
+fixes, and PR12's approved brand theme (036bc23). No unmerged code was copied.
 
-Exact remaining glue, to apply after merging `origin/staging`:
+- `readCatalog` selects `catalogGateway(env)` and passes that fixed gateway to
+  `upstreamUrl`. The Vercel/on-prem conflict is rejected even in local mode.
+- `server/onprem-server.ts` routes `/products/` alongside `/api/catalog` and
+  `/healthz`. Loopback-only binding, validated PORT (default 3200), raw API path
+  matching, GET-only handling and timeouts are retained. Product paths reject
+  normalization/traversal before an ERP read.
+- `server/onprem.ts` constructs the product handler with
+  `readFile(new URL('../dist/index.html', import.meta.url), 'utf8')` and normal
+  deployment gates, with no development bypass.
+- `deploy/onprem/nginx-roysauto-staging.conf` adds `/products/` forwarding with
+  unchanged path/query, the existing forwarding headers and 30-second timeout.
+  Server noindex/robots headers, static assets and catalog method restrictions
+  remain intact. **Infra owns installing/reloading this reviewed config.**
+- Brand wordmark, favicon, index title and ink/paper/burgundy tokens are retained;
+  PR13's compact mobile-grid rows use the brand's charcoal section band.
 
-1. In `server/onprem-server.ts`, add a product handler parameter alongside the
-   existing catalog handler and route `/products/` requests to it before the
-   catch-all 404. Preserve `/healthz`, `/api/catalog`, loopback binding, method
-   restrictions and server timeouts.
-2. In `server/onprem.ts`, construct `createProductPageHandler` with
-   `() => readFile(new URL('../dist/index.html', import.meta.url), 'utf8')` and
-   pass it to that server. Use the default fetch/environment/gates, with no
-   local-development bypass. `server/` and `dist/` are already release inputs.
-   `product-data.ts` has only an erased type import outside `server/`; no new
-   runtime package or release copy is needed.
-3. In `deploy/onprem/nginx-roysauto-staging.conf`, add `location /products/`
-   forwarding unchanged paths and queries to `http://127.0.0.1:3200`, using
-   the existing catalog proxy's forwarding headers and 30-second timeout.
-   Keep the server-level noindex headers and static `/assets/` behavior. Infra
-   owns installation/reload of the reviewed nginx file; this executor does not
-   change live infrastructure or deploy.
-4. Reconcile the shared proxy with PR9: `readCatalog` must pass its deployment
-   environment into PR9's `upstreamUrl(input, env)`; retain that PR's exact
-   fixed LAN selection and Vercel-conflict denial.
-5. Preserve PR12 theme and PR13 compact mobile rows, scoped fitment notes,
-   search and retry fixes when they merge. The existing browser smoke now
-   targets the Details anchor instead of a button.
+Candidate acceptance runs on VM511, not the hosted staging site. Hosted product
+acceptance remains gated on independent review, approved merge/deployment and
+infra installation of the nginx product location. Vercel remains design-only;
+no Vercel product rewrite/function or production canonical domain is added.
 
-Until that glue and VM511 real-staging Firefox checks pass, this work is an
-isolated, dependency-blocked candidate, not accepted on-prem functionality.
-Vercel remains design-preview-only; no Vercel rewrite or product HTML function
-is installed by this PR.
+## Packaged runtime verification
+
+The deploy workflow copies only `server/`, `dist/` and `package.json`.
+`ROYS_LINKS_PACKAGED=1` makes the product smoke copy exactly those entries into
+an isolated release directory on VM511 and start its real `server/onprem.ts`
+from that directory with Node 22 type stripping. Neither `src/`, `node_modules/`
+nor the task worktree is present in that package. The external type import in
+`product-data.ts` is erased by Node; the HTML template resolves by `import.meta.url`.
+
+Vite supplies built static assets and forwards product/API requests to this
+packaged Node process, exercising the normal activation gate and fixed staging
+LAN reads. This models nginx dispatch without installing live config. The report
+records the retained package path and exact root entries for independent review.
 
 Evidence ledger (2026-11-06 10:58 EST):
 
@@ -140,13 +143,14 @@ refusals, HTTP 200 challenge headers and missing-Ray cases. It checks the correc
 context closes and subsequent journeys/retries never execute. It makes no ERP
 requests and creates no screenshots; its success is not real-staging acceptance.
 
-After dependencies/glue are integrated, on VM511 only:
+For candidate acceptance, on VM511 only:
 
 1. Check `dev-remote --queue`, then the smallest affected tests and one
    `AGENT_PRE_PUSH_BASE=origin/staging agent-pre-push` before pushing.
 2. Build with `dev-remote --heavy npx vite build` (pre-push already typechecks).
-3. Run `node scripts/product-links-smoke.mjs` on VM511 through `dev-remote
-   --service`, using the approved on-prem activation variables after PR9.
+3. Run `ROYS_LINKS_PACKAGED=1 node scripts/product-links-smoke.mjs` on VM511
+   through `dev-remote --service`, with `ROYS_ONPREM=1` and
+   `ROYS_CATALOG_PREVIEW_ENABLED=true`.
    It uses real ERP staging, no mocked API responses. It covers direct entry,
    reload, a separate browser context, in-page open/close, Back/Forward,
    paginated fitments, missing and hostile SKU paths, no-JavaScript HTML,
@@ -159,4 +163,5 @@ After dependencies/glue are integrated, on VM511 only:
 Deployment inventory: no settings changed; no new env variables, credentials,
 domains, Cloudflare/DNS or deployment-protection changes. Existing Vercel
 project/main exception is unchanged. Activation still requires the existing
-preview flag; on-prem LAN activation awaits PR9. Checkout/payments remain disabled.
+preview flag and approved on-prem LAN target. The nginx source location must be
+installed by infra after review. Checkout/payments remain disabled.

@@ -6,8 +6,10 @@ catalog-connected test site runs on our staging VM (VM 459 `roysauto-staging`, p
 
 ## Architecture
 
-- Browser -> nginx on VM 459 (serves `dist/`, proxies `/api/catalog` and `/healthz` to the Node process).
+- Browser -> nginx on VM 459 (serves `dist/`, proxies `/products/`, `/api/catalog` and `/healthz` to the Node process).
 - `server/onprem.ts` (node:http) serves `GET /api/catalog` via `createCatalogHandler()` and `GET /healthz`.
+  Product documents under `/products/<ERP SKU>` use the same gated read path and
+  `dist/index.html`, resolved relative to the server module in the deployed release.
   Everything else returns 404; non-GET returns 405. It does not serve static files.
 - Upstream: the single fixed `http://192.168.88.233/api/erp` (VM 453 nginx; plain HTTP, no Host header,
   no credentials). Selected only by `ROYS_ONPREM=1`; no fallback, retry to another route, or env-supplied URL.

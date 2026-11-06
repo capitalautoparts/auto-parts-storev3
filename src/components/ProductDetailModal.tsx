@@ -66,13 +66,13 @@ export function ProductDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto p-0 bg-white shadow-2xl border-0">
+      <DialogContent className="w-[calc(100%-2rem)] max-w-2xl min-w-0 max-h-[90dvh] overflow-y-auto p-0 bg-white shadow-2xl border-0 [&>button]:text-white [&>button]:bg-brand-charcoal [&>button]:opacity-100 [&>button]:p-1">
         {/* Header bar */}
-        <div className="bg-brand-charcoal text-white px-4 py-3">
+        <div className="bg-brand-charcoal text-white px-4 py-3 min-w-0">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-3 text-white">
-              <Package className="h-5 w-5" />
-              <span className="font-semibold">{part.brand} {part.partNumber}</span>
+            <DialogTitle className="flex items-center gap-3 text-white pr-6 min-w-0">
+              <Package className="h-5 w-5 shrink-0" />
+              <span className="font-semibold min-w-0 break-words">{part.brand} {part.partNumber}</span>
               {part.tier && <Badge
                 className={cn(
                   "text-xs font-bold px-2 py-0.5 rounded",
@@ -83,13 +83,13 @@ export function ProductDetailModal({
                 {tier.label}
               </Badge>}
             </DialogTitle>
-            <DialogDescription className="text-white/90 text-xs">Review all application conditions; a vehicle match is not a fitment guarantee.</DialogDescription>
+            <DialogDescription className="text-white/90 text-xs text-left whitespace-normal break-words">Review all application conditions; a vehicle match is not a fitment guarantee.</DialogDescription>
           </DialogHeader>
         </div>
 
-        <div className="p-4 bg-white">
+        <div className="p-4 bg-white min-w-0 break-words">
           {/* Product info section */}
-          <div className="flex flex-wrap gap-4 mb-4">
+          <div className="grid grid-cols-[5rem_minmax(0,1fr)] sm:grid-cols-[8rem_minmax(0,1fr)_auto] gap-4 mb-4">
             {/* Image - smaller and to the left */}
             <div className="flex-shrink-0">
               <ProductImage
@@ -102,9 +102,8 @@ export function ProductDetailModal({
             {/* Product details */}
             <div className="flex-1 min-w-0">
               <p className="text-sm text-muted-foreground mb-2">{part.description}</p>
-              {part.descriptionText && <p className="text-sm mb-3">{part.descriptionText}</p>}
 
-              <div className="flex items-baseline gap-2 mb-3">
+              <div className="flex flex-wrap items-baseline gap-2 mb-3">
                 <span className="text-2xl font-bold text-brand-ink">{part.price === null ? "Price unavailable" : `$${part.price.toFixed(2)}`}</span>
                 <span className="text-sm text-muted-foreground">CAD · {part.packQuantity && part.packQuantity > 1 ? `pack of ${part.packQuantity}` : "sellable unit"}</span>
               </div>
@@ -133,7 +132,7 @@ export function ProductDetailModal({
             </div>
 
             {/* Action buttons */}
-            <div className="flex flex-col gap-2">
+            <div className="col-span-2 sm:col-span-1 flex flex-col gap-2 min-w-0">
               <Button
                 onClick={handleAddToCart}
                 disabled={part.price === null || part.purchasable === false}
@@ -146,10 +145,12 @@ export function ProductDetailModal({
             </div>
           </div>
 
+          {part.descriptionText && <p className="text-sm mb-4">{part.descriptionText}</p>}
+
           {part.coreCharge != null && <p className="text-sm mb-3">Additional core charge: ${part.coreCharge.toFixed(2)} CAD</p>}
           {/* Tabbed content - more compact */}
-          <Tabs defaultValue="specs" className="border rounded-lg overflow-hidden">
-            <TabsList className="w-full justify-start overflow-x-auto rounded-none border-b bg-gray-100 p-0 h-auto">
+          <Tabs defaultValue="specs" className="border rounded-lg overflow-hidden min-w-0">
+            <TabsList className="grid grid-cols-2 sm:flex w-full min-w-0 justify-start rounded-none border-b bg-gray-100 p-0 h-auto">
               <TabsTrigger
                 value="specs"
                 className="rounded-none border-b-2 border-transparent data-[state=active]:border-brand-navy data-[state=active]:bg-white px-4 py-2 text-sm"
@@ -251,7 +252,7 @@ export function ProductDetailModal({
                 </div>
 
                 {part.fitments && part.fitments.length > 0 ? (
-                  <table className="w-full text-sm">
+                  <table className="w-full table-fixed text-xs sm:text-sm">
                     <thead className="bg-gray-100 sticky top-0">
                       <tr>
                         <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wider">Year</th>

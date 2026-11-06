@@ -56,6 +56,14 @@ const assertSchema = async (page, sku) => {
   }, sku));
   if (sku) assert.doesNotMatch(await run(() => page.locator('#product-schema').textContent()), /"offers"|"price"/);
 };
+const assertReachable = async (page, dialog, control) => {
+  await run(() => control.scrollIntoViewIfNeeded());
+  const box = await run(() => control.boundingBox()), frame = await run(() => dialog.boundingBox());
+  const viewport = page.viewportSize();
+  assert.ok(box && frame && box.x >= Math.max(0, frame.x) && box.x + box.width <= Math.min(viewport.width, frame.x + frame.width) + 1
+    && box.y >= Math.max(0, frame.y) && box.y + box.height <= Math.min(viewport.height, frame.y + frame.height) + 1,
+  'The full control must be reachable inside the dialog and viewport');
+};
 try {
   const context = await run(() => browser.newContext({ viewport: { width: 1440, height: 900 }, userAgent: 'RoysAuto-Product-Links-Firefox-Smoke/1.0 (+Autrex; staging read-only)' }));
   const page = await run(() => context.newPage()); monitor.observe(page); page.setDefaultTimeout(45_000);
@@ -110,6 +118,18 @@ try {
   await run(() => mobile.goto(productUrl));
   await run(() => mobile.getByRole('dialog').getByText('AGNA Brakes ALD1212M', { exact: true }).waitFor());
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  const mobileDialog = mobile.getByRole('dialog');
+  assert.equal(await run(() => mobileDialog.evaluate(element => element.scrollWidth > element.clientWidth)), false, 'No hidden horizontal overflow inside the mobile dialog');
+  await assertReachable(mobile, mobileDialog, mobileDialog.getByRole('button', { name: 'Add to Cart', exact: true }));
+  for (const name of ['Specifications', 'Interchanges', 'Fitments', 'Documents']) {
+    const tab = mobileDialog.getByRole('tab', { name, exact: true });
+    await assertReachable(mobile, mobileDialog, tab);
+    await run(() => tab.click());
+    assert.equal(await tab.getAttribute('aria-selected'), 'true');
+  }
+  assert.equal(await mobileDialog.getByRole('tablist').evaluate(element => element.scrollWidth > element.clientWidth), false, 'Tabs fit without clipped horizontal content');
+  await run(() => mobileDialog.getByText('No documents available', { exact: true }).waitFor());
+  await assertReachable(mobile, mobileDialog, mobileDialog.getByRole('button', { name: 'Close', exact: true }));
   await run(() => mobile.screenshot({ path: `${output}/mobile-product-390.png` })); report.screenshots.push('mobile-product-390.png');
   await run(() => mobile.reload()); await run(() => mobile.getByRole('dialog').getByText('AGNA Brakes ALD1212M', { exact: true }).waitFor());
   report.cases.push('Fresh mobile direct link and refresh at 390px without page overflow');
