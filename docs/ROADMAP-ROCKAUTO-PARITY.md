@@ -3,6 +3,15 @@
 Status: plan only. No code changes ship with this document.
 Owner: Roy's Auto orchestrator. Date: 2026-11-06.
 
+Current implementation backlog and delivery boundaries: [Roys search, navigation
+and product-page execution plan](ROCKAUTO-PARITY-EXECUTION-PLAN.md), researched at
+`467ac1c20330` on 2026-11-06 EST. It extends the R1/R3/R5/R6/R7 ownership below.
+Historical current-state descriptions and broad reference assumptions in this
+roadmap are not fresh acceptance: product links, on-prem hosting, one-vehicle
+controls and compact header work have since landed; catalog URL activation,
+guided engine/part search and substantive full product pages remain unfinished.
+Use the linked evidence ledger for source, hosted and reference-browser limits.
+
 Goal: make the Roy's Auto catalog feel like a wholesaler's catalog. That means an
 instant vehicle tree, dense tables that show several price tiers per part, in-tree
 "in cart" markers, and quick part-number lookup. Checkout stays closed until Brian
