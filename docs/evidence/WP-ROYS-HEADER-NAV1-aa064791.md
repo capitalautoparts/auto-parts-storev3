@@ -63,3 +63,50 @@ Artifacts: `report.json`, `1440-integrated.png`, `1440-wishlist.png`,
 `AGENT_PRE_PUSH_BASE=origin/staging agent-pre-push` passed on VM511:
 TypeScript and all 27 repository tests passed. The Vite build also passed on
 VM511 before the focused Firefox run. CI remains the authoritative merge gate.
+
+## PR #17 verification remediation
+
+Both P2 findings at `3b3904982c34b9a700834872f1073b463109cda3` were actionable.
+Merged `origin/staging` at `68950d52b4faad8d970301061b0d2b477aba1689`, including
+PR #14. Header runtime and accepted theme remain unchanged; App/Tree belong to
+the R1/R7 executor.
+
+Only the Account assertion block in `scripts/browser-smoke.mjs` changes: it
+requires a disabled button and visible explanation linked by `aria-describedby`,
+instead of clicking the disabled button. Existing password/mock-user and final
+auth/checkout/order API safeguards remain.
+
+Reuse rung 5: `header-navigation-check.mjs` uses the shared
+`createProductSmokeMonitor` from `product-links-monitor.mjs`. A single refusal
+latch observes every page and guards browser actions, assertions, screenshots
+and subsequent viewport creation. It preserves non-secret references and closes
+the requesting context for API/product-document refusals, including background
+categories/suggestions. Selected years/search samples are separate from the
+monitor's complete API response inventory.
+
+`scripts/header-navigation-refusals.mjs` imports the actual guarded Header
+journey. Seven isolated local fixtures cover background API 403, JSON refusal,
+challenge and reference-header responses, plus mobile product-document 403,
+document challenge and refusal without a reference. Each must preserve the
+reference/fallback, close its requester, make only one refused request and stop
+before journey completion or the next viewport. Fixtures produce no screenshots
+and contact no ERP. Run on VM511 before the unstubbed integrated Header journey:
+
+```sh
+ROYS_HEADER_OUTPUT=/tmp/roys-aa064791-header-navigation-review \
+  node scripts/header-navigation-refusals.mjs
+```
+
+Remediation artifacts are kept under
+`/srv/dev/reports/roys-aa064791-header-navigation/review/`, separate from the
+previously accepted screenshots. No full catalog/product journey is rerun.
+
+On 2026-11-06 at 12:26 PM EST, all seven isolated wiring cases passed, followed
+by the real-staging integrated Header journey at 1440x900 and 390x844. The shared
+monitor recorded successful years, categories and search responses at both
+widths; selected samples again contained 52 years and one SKU result. No
+refusals, page errors, forbidden API calls or overflow occurred. `refusals.json`
+is fixture-only proof; `report.json` and the eight PNGs are unstubbed evidence.
+The Header SHA-256 remains identical to the independently accepted source.
+The single mandatory remediation `agent-pre-push` passed on VM511: TypeScript
+and all 35 repository tests passed on the integrated staging baseline.

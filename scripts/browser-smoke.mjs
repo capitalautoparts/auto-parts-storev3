@@ -218,8 +218,14 @@ try {
   await guarded(page.getByRole('img', { name: 'roy’s auto' }).first().waitFor());
 
   await guarded(page.getByTestId('vehicle-tree').getByRole('button', { name: '2020', exact: true }).waitFor());
-  await page.getByRole('button', { name: 'Account', exact: true }).filter({ visible: true }).click();
-  await page.getByText('Accounts are not enabled during catalog testing.', { exact: true }).waitFor();
+  const account = page.getByRole('button', { name: 'Account', exact: true }).filter({ visible: true });
+  assert.equal(await guarded(account.isDisabled()), true);
+  const accountExplanation = page.getByText('Accounts are not enabled during catalog testing.', { exact: true }).filter({ visible: true });
+  await guarded(accountExplanation.waitFor());
+  assert.equal(await guarded(accountExplanation.isVisible()), true);
+  const accountExplanationId = await guarded(accountExplanation.getAttribute('id'));
+  assert.ok(accountExplanationId, 'Visible Account explanation has an accessible description target');
+  assert.equal(await guarded(account.getAttribute('aria-describedby')), accountExplanationId);
   assert.equal(await page.locator('input[type="password"]').count(), 0);
   assert.equal(await page.evaluate(() => localStorage.getItem('cap-auth-user')), null);
   report.cases.push('Account action stays disabled; no login form, API call or mock user is created');
