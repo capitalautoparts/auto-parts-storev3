@@ -39,6 +39,7 @@ export function Header({
 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pendingMenuSearch = useRef(false);
+  const pendingMenuCatalog = useRef(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [mobileWishlistOpen, setMobileWishlistOpen] = useState(false);
   const { user, isAuthenticated: signedIn, logout } = useAuth();
@@ -49,12 +50,12 @@ export function Header({
   const focusSearch = () => document.getElementById("catalog-search")?.focus();
 
   return (
-    <header className="shrink-0 bg-brand-navy text-white shadow-lg animate-rise">
+    <header className="shrink-0 bg-brand-navy text-white shadow-sm">
       <div className="border-b border-black/20">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
+        <div className="container mx-auto px-3 py-1.5 lg:py-2 flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-3 gap-y-1">
           {/* Mobile menu button */}
           <Sheet open={mobileMenuOpen} onOpenChange={open => {
-            if (open) pendingMenuSearch.current = false;
+            if (open) { pendingMenuSearch.current = false; pendingMenuCatalog.current = false; }
             setMobileMenuOpen(open);
           }}>
             <SheetTrigger aria-label="Open menu" className={buttonVariants({ variant: "ghost", size: "icon", className: "lg:hidden text-white hover:bg-black/20" })}>
@@ -62,6 +63,12 @@ export function Header({
             </SheetTrigger>
             <SheetContent side="left" className="w-72 bg-brand-navy text-white border-r-0"
               onCloseAutoFocus={event => {
+                if (pendingMenuCatalog.current) {
+                  pendingMenuCatalog.current = false;
+                  event.preventDefault();
+                  onCatalogClick?.();
+                  return;
+                }
                 if (!pendingMenuSearch.current) return;
                 pendingMenuSearch.current = false;
                 // Override the trigger focus return only for Menu > Search.
@@ -72,7 +79,7 @@ export function Header({
                 <SheetTitle className="text-white">Menu</SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-4 mt-6">
-                <button onClick={() => { onCatalogClick?.(); setMobileMenuOpen(false); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
+                <button onClick={() => { pendingMenuCatalog.current = true; setMobileMenuOpen(false); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
                   Part Catalog
                 </button>
                 <button onClick={() => { pendingMenuSearch.current = true; setMobileMenuOpen(false); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
@@ -150,11 +157,29 @@ export function Header({
             </SheetContent>
           </Sheet>
 
-          <div className="flex items-center gap-3">
-            <Logo className="h-7 sm:h-8 w-auto text-white" />
+          <div className="shrink-0 flex items-center gap-3">
+            <Logo className="h-6 sm:h-7 w-auto text-white" />
           </div>
 
-          <div className="hidden lg:flex items-center gap-5 text-[11px] uppercase tracking-[0.2em] text-white/80">
+          <nav aria-label="Catalog" className="hidden lg:flex shrink-0 items-center gap-2 text-sm">
+            <button onClick={onCatalogClick} className="px-2 py-2 rounded hover:bg-white/10">Part Catalog</button>
+            <button onClick={focusSearch} className="px-2 py-2 rounded hover:bg-white/10">Search catalog</button>
+          </nav>
+
+          {/* Search bar - full width on mobile */}
+          <div className="order-last lg:order-none basis-full lg:basis-0 flex-1 min-w-0 w-full lg:w-auto">
+            <VehicleSearchBar
+              appliedQuery={searchQuery}
+              onVehicleSelect={onVehicleSearch || (() => {})}
+              onPartSelect={onPartSearch}
+              onCategorySelect={onCategorySearch}
+              onTextSearch={onSearchChange}
+              vehicleContext={vehicleContext}
+              className="w-full"
+            />
+          </div>
+
+          <div className="hidden lg:flex shrink-0 items-center gap-5 text-[11px] uppercase tracking-[0.2em] text-white/80">
             {!catalogPreview && <>
             <button className="hover:text-white hover:underline">Help</button>
             <button className="hover:text-white hover:underline">Order Status</button>
@@ -189,16 +214,19 @@ export function Header({
             )}
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex flex-col text-right text-[10px] uppercase tracking-[0.15em] text-white/80">
+          <div className="shrink-0 flex items-center gap-3">
+            <div className="hidden xl:flex flex-col whitespace-nowrap text-right text-[10px] uppercase tracking-[0.15em] text-white/80">
               <span>Open Mon-Sat</span>
               <span className="font-semibold text-white">8am - 8pm</span>
             </div>
+            {!catalogPreview && <div className="hidden lg:flex items-center gap-2 text-xs">
+              <button className="py-2">Tools</button><button className="py-2">VIN Lookup</button><button className="py-2">Need Help?</button>
+            </div>}
             {/* Wishlist icon */}
             <div className="hidden lg:block">
               <WishlistPanel onAddToCart={onAddToCart} />
             </div>
-            {/* Cart icon - hidden on mobile since we have floating button */}
+            {/* Cart icon - mobile uses the reserved App cart strip */}
             <button aria-label="Open Quick Cart" onClick={onCartClick} className="hidden lg:flex flex-shrink-0 relative">
               <ShoppingCart className="h-6 w-6" />
               {cartItemCount > 0 && (
@@ -208,40 +236,6 @@ export function Header({
               )}
             </button>
           </div>
-        </div>
-      </div>
-
-      <div className="bg-brand-charcoal text-white border-b border-black/20">
-        <div className="container mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          {/* Desktop nav buttons - hidden on mobile */}
-          <div className="hidden lg:flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] font-semibold">
-            <button onClick={onCatalogClick} className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Part Catalog</button>
-            <button onClick={focusSearch} className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Search catalog</button>
-            {!catalogPreview && <button className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Tools</button>}
-          </div>
-
-          {/* Search bar - full width on mobile */}
-          <div className="flex-1 max-w-xl w-full lg:mx-auto">
-            <VehicleSearchBar
-              appliedQuery={searchQuery}
-              onVehicleSelect={onVehicleSearch || (() => {})}
-              onPartSelect={onPartSearch}
-              onCategorySelect={onCategorySearch}
-              onTextSearch={onSearchChange}
-              vehicleContext={vehicleContext}
-              className="w-full"
-            />
-          </div>
-
-          {/* Desktop utility buttons - hidden on mobile */}
-          {!catalogPreview && <div className="hidden lg:flex items-center gap-2">
-            <Button type="button" variant="outline" className="border-white/40 text-white hover:bg-black/20 bg-transparent">
-              VIN Lookup
-            </Button>
-            <Button type="button" variant="outline" className="border-white/40 text-white hover:bg-black/20 bg-transparent">
-              Need Help?
-            </Button>
-          </div>}
         </div>
       </div>
 
