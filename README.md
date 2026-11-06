@@ -1,5 +1,7 @@
 # RoysAuto / Capital Auto Parts catalog exploration
 
+Agents (Claude and Codex): start with [AGENTS.md](AGENTS.md); detail is in [docs/agent-reference/](docs/agent-reference/README.md) and [docs/AGENT-TOOLBOX.md](docs/AGENT-TOOLBOX.md). `API_SPEC.md` and `SETUP.md` are legacy and do not describe the live catalog gateway.
+
 The existing single-page design is preserved: original red header, expanding
 vehicle tree, inline parts tables, product dialog and right-side Quick Cart.
 The active catalog now reads ERP staging instead of the prototype fixtures.
