@@ -62,6 +62,8 @@ export interface Part {
   availability?: string;
   leadTimeDays?: number;
   applicationNotes?: string[];
+  /** ERP's vehicle-scoped summary; it deliberately omits unverified engine claims. */
+  fitmentSummary?: string;
   stock: number;
   position?: string;
   imageUrl?: string;

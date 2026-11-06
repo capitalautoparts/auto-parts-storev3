@@ -10,7 +10,7 @@ export interface Option { id: number; name?: string; description?: string; label
 export interface Category { id: number; display_name: string; slug: string; mapped_part_type_count?: number }
 export interface Application {
   submodel?: string | null; engine?: string | null; position?: string | null; drive_type?: string | null;
-  notes?: string[]; qualifiers?: { name?: string; value?: string; text?: string }[];
+  notes?: string[]; qualifiers?: string[];
 }
 export interface Part {
   sku: string; slug?: string; part_number: string; name: string; brand_name: string;
@@ -18,7 +18,7 @@ export interface Part {
   core_charge?: number | { amount?: number } | null;
   availability?: { status: string; quantity: number | null; lead_time_days?: number } | null;
   sellablePackQuantity?: number; image_url?: string | null;
-  fitment_summary?: string; applications?: Application[];
+  fitment_summary?: string | null; applications?: Application[];
   fitment_qualifiers?: { name: string; value: string }[];
 }
 export interface SearchResult {
