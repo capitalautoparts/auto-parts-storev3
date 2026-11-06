@@ -151,7 +151,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                           <Button asChild
                             variant="outline"
                             size="sm"
-                            className="w-full"
+                            className="w-auto md:w-full"
                           >
                             <a href={href} aria-disabled={!href} onClick={event => followProduct(event, String(part.id))}><Info className="h-4 w-4 mr-1" />
                             Details</a>
