@@ -17,23 +17,23 @@ interface PartsTableProps {
 const tierConfig = {
   economy: {
     label: "Economy",
-    bgColor: "bg-sky-100",
-    textColor: "text-sky-900",
+    bgColor: "bg-white border border-brand-sand",
+    textColor: "text-brand-ink",
   },
   daily_driver: {
     label: "Daily Driver",
-    bgColor: "bg-emerald-100",
-    textColor: "text-emerald-900",
+    bgColor: "bg-brand-sand",
+    textColor: "text-brand-ink",
   },
   premium: {
     label: "Premium",
-    bgColor: "bg-amber-100",
-    textColor: "text-amber-900",
+    bgColor: "bg-brand-accent/15 border border-brand-accent/40",
+    textColor: "text-brand-accent",
   },
   performance: {
     label: "Performance",
-    bgColor: "bg-rose-100",
-    textColor: "text-rose-900",
+    bgColor: "bg-brand-ink",
+    textColor: "text-white",
   },
 };
 
@@ -62,7 +62,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
     <div className="space-y-6 stagger-children" data-testid="parts-table">
       {positions.map((position) => (
         <div key={position} className="animate-rise">
-          <div className="flex items-center justify-between bg-[#a00a0a] text-white px-4 py-2 text-xs uppercase tracking-[0.25em] font-display">
+          <div className="flex items-center justify-between bg-brand-charcoal text-white px-4 py-2 text-xs uppercase tracking-[0.25em] font-display">
             <span>{position}</span>
             <span className="text-[10px] text-white/80">CAD / sellable unit</span>
           </div>
@@ -157,7 +157,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                               onClick={() => onAddToCart(part.id)}
                               disabled={part.price === null}
                               size="sm"
-                              className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
+                              className="flex-1 bg-brand-accent text-white hover:bg-brand-accent/90"
                             >
                               <ShoppingCart className="h-4 w-4 mr-1" />
                               Add

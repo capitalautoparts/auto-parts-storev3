@@ -132,7 +132,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
               </div>
               <Button
                 type="submit"
-                className="w-full bg-brand-navy hover:bg-brand-navy/90"
+                className="w-full bg-brand-accent hover:bg-brand-accent/90"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -226,7 +226,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
               </div>
               <Button
                 type="submit"
-                className="w-full bg-brand-navy hover:bg-brand-navy/90"
+                className="w-full bg-brand-accent hover:bg-brand-accent/90"
                 disabled={isLoading}
               >
                 {isLoading ? (

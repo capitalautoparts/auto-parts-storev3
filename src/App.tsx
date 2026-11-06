@@ -114,7 +114,7 @@ export default function App() {
     </div>
     <div className="lg:hidden fixed bottom-4 right-4 z-50">
       <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
-        <SheetTrigger asChild><Button aria-label="Open Quick Cart" className="rounded-full h-14 w-14 bg-brand-navy shadow-lg hover:bg-brand-navy/90 relative"><ShoppingCart className="h-6 w-6" />{(cart?.items.length ?? 0) > 0 && <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-brand-gold text-brand-ink">{cart?.items.length}</Badge>}</Button></SheetTrigger>
+        <SheetTrigger asChild><Button aria-label="Open Quick Cart" className="rounded-full h-14 w-14 bg-brand-accent shadow-lg hover:bg-brand-accent/90 relative"><ShoppingCart className="h-6 w-6" />{(cart?.items.length ?? 0) > 0 && <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-brand-gold text-brand-ink">{cart?.items.length}</Badge>}</Button></SheetTrigger>
         <SheetContent side="right" className="w-full sm:max-w-md p-0 overflow-auto bg-white"><SheetHeader className="sr-only"><SheetTitle>Quick Cart</SheetTitle></SheetHeader><RightCartPanel {...cartProps} /></SheetContent>
       </Sheet>
     </div>
