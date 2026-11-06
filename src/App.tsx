@@ -35,6 +35,7 @@ export default function App() {
   const tree = useRef<TreeSidebarHandle>(null);
   const resultsSection = useRef<HTMLElement>(null);
   const restored = useRef(false);
+  const [catalogFocus, setCatalogFocus] = useState(0);
   useEffect(() => {
     if (!restored.current && activeVehicle) tree.current?.expandToVehicle({ type: 'vehicle', label: '', ...activeVehicle });
     restored.current = true;
@@ -44,6 +45,11 @@ export default function App() {
   useEffect(() => {
     if (scopedCategory || searchQuery.length >= 2) resultsSection.current?.scrollIntoView({ block: 'start' });
   }, [scopedCategory?.slug, searchQuery, vehicleContext]);
+  // Catalog deliberately resets search. Queue root focus after the resulting
+  // render and the results-scroll effect above, including from the mobile menu.
+  useEffect(() => {
+    if (catalogFocus) tree.current?.focusVehiclePicker();
+  }, [catalogFocus]);
   const { data, isLoading, error, refetch } = useQuery(
     () => partsApi.search({ q: searchQuery || undefined, category: scopedCategory, vehicle: vehicleContext, page, filters }),
     { enabled: !!scopedCategory || searchQuery.trim().length >= 2, deps: [scopedCategory?.slug, vehicleContext, searchQuery, page, filters] },
@@ -80,8 +86,11 @@ export default function App() {
   function selectVehicle(vehicle: VehicleExpansion) {
     resetResults(); rememberVehicle(vehicle); setSelectedFitment(null); setSearchQuery('');
   }
-  function returnTo(target: 'categories' | 'engines' | 'years') {
+  function returnTo(target: 'categories' | 'engines' | 'years' | 'makes' | 'models' | 'selection') {
     if (vehicleContext) tree.current?.revealSelection(target, vehicleContext, selectedFitment?.category);
+  }
+  function showCatalog() {
+    setSearchQuery(''); resetResults(); setCatalogFocus(value => value + 1);
   }
   function textSearch(query: string) { setSearchQuery(query.trim()); resetResults(); }
   function vehicleSearch(result: VehicleSearchResult) {
@@ -106,13 +115,9 @@ export default function App() {
   };
   const changeFilter = (key: string, value: string) => { setFilters(current => ({ ...current, [key]: value })); setPage(1); };
   const renderParts = () => <section ref={resultsSection} className="border-t border-border pt-3 min-w-0" data-testid="inline-parts" aria-label="Catalog results" aria-busy={isLoading}>
-    <div className="mb-3 py-2">
-      <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{searchQuery ? 'Part search' : 'Selected fitment'}</div>
-      <div className="mt-1 font-semibold text-base text-foreground">
-        {vehicleContext ? `${vehicleContext.year} ${vehicleContext.makeName} ${vehicleContext.modelName} > ${vehicleContext.engineName ?? 'All engines'}` : 'All vehicles'}
-        {scopedCategory ? ` > ${scopedCategory.name}` : searchQuery ? ` > ${searchQuery}` : ''}
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">Check engine, submodel, position and application notes before choosing a part.</p>
+    <div className="mb-2">
+      <h2 className="font-semibold text-sm text-foreground">{searchQuery ? `Search: ${searchQuery}` : scopedCategory?.name ?? 'Parts'}</h2>
+      <p className="text-xs text-muted-foreground">Check engine, submodel, position and application notes before choosing a part.</p>
     </div>
     <div className="flex flex-wrap gap-3 mb-3 text-xs">
       <label className="min-w-0 max-w-full">Brand<select aria-label="Brand" className="block border rounded p-1 max-w-48 bg-white" value={filters.brand ?? ''} onChange={event => changeFilter('brand', event.target.value)}><option value="">All brands</option>{data?.facets?.brands?.map(brand => <option key={brand.brand_id} value={brand.brand_id}>{brand.name}</option>)}</select></label>
@@ -134,33 +139,39 @@ export default function App() {
       onSearchChange={textSearch} onVehicleSearch={vehicleSearch} onPartSearch={result => textSearch(result.partNumber ?? '')}
       onCategorySearch={result => tree.current?.expandToCategory(result)} vehicleContext={vehicleContext}
       onAddToCart={part => addToCart(part.id, part)} catalogPreview
-      onCatalogClick={() => { setSearchQuery(''); resetResults(); }} onCartClick={() => setMobileCartOpen(true)} />
-    <div className="shrink-0 px-4 py-1 border-b text-xs text-muted-foreground flex flex-wrap items-center gap-3">
-      <span>Catalog test · Canada / CAD · ERP staging · Checkout disabled</span>
-      {vehicleContext && <div className="w-full min-w-0 flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="selected-context">
-        <span className="font-semibold text-foreground">Current vehicle</span>
+      onCatalogClick={showCatalog} onCartClick={() => setMobileCartOpen(true)} />
+    <div className="shrink-0 px-3 py-1 border-b text-xs text-muted-foreground space-y-1" data-testid="catalog-context">
+      <span>Canada / CAD · ERP staging test · Checkout disabled</span>{' '}
+      {vehicleContext && <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="selected-context">
         <Breadcrumb aria-label="Selected vehicle and category" className="min-w-0 flex-1 basis-full lg:basis-auto">
-          <BreadcrumbList className="text-xs gap-1">
-            {[{ label: String(vehicleContext.year), target: 'years' as const },
-              { label: vehicleContext.makeName, target: 'years' as const },
+          <BreadcrumbList className="text-sm gap-x-1 gap-y-0">
+            <BreadcrumbItem><span className="font-semibold text-foreground text-xs">Current vehicle:</span></BreadcrumbItem>
+            <BreadcrumbItem><BreadcrumbLink asChild><button className="py-1 underline underline-offset-2" onClick={showCatalog}>Part Catalog</button></BreadcrumbLink></BreadcrumbItem>
+            {[{ label: String(vehicleContext.year), target: 'makes' as const },
+              { label: vehicleContext.makeName, target: 'models' as const },
               { label: vehicleContext.modelName, target: 'engines' as const },
               { label: vehicleContext.engineName ?? 'All engines', target: 'categories' as const },
-              ...(scopedCategory ? [{ label: scopedCategory.name, target: 'categories' as const }] : []),
+              ...(scopedCategory ? [{ label: scopedCategory.name, target: 'selection' as const }] : []),
             ].map((item, index, items) => <Fragment key={index}>
-              {index > 0 && <BreadcrumbSeparator />}
+              <BreadcrumbSeparator />
               <BreadcrumbItem className="min-w-0 max-w-full">
-                <BreadcrumbLink asChild><button className="text-left break-words" aria-current={index === items.length - 1 ? 'location' : undefined} onClick={() => returnTo(item.target)}>{item.label}</button></BreadcrumbLink>
+                <BreadcrumbLink asChild><button className="py-1 text-left break-words underline underline-offset-2" aria-current={index === items.length - 1 ? 'location' : undefined} onClick={() => returnTo(item.target)}>{item.label}</button></BreadcrumbLink>
               </BreadcrumbItem>
             </Fragment>)}
           </BreadcrumbList>
         </Breadcrumb>
-        <div className="flex flex-wrap gap-2" aria-label="Return to catalog choices">
-          <Button size="sm" variant="outline" onClick={() => returnTo('categories')}>Categories</Button>
-          <Button size="sm" variant="outline" onClick={() => returnTo('engines')}>Change engine</Button>
-          <Button size="sm" variant="outline" onClick={() => returnTo('years')}>Change vehicle</Button>
-          <Button size="sm" variant="outline" onClick={() => clearVehicle()}>Clear vehicle</Button>
+        <div className="min-w-0 max-w-full flex flex-wrap items-start gap-2" aria-label="Return to catalog choices">
+          <details className="group min-w-0 max-w-full" data-testid="vehicle-options">
+            <summary className="min-h-9 flex items-center cursor-pointer rounded border border-border px-3 text-sm text-foreground hover:bg-muted">Vehicle options <span aria-hidden="true" className="ml-2 group-open:rotate-180">⌄</span></summary>
+            <div className="py-2 flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => returnTo('categories')}>Categories</Button>
+              <Button size="sm" variant="outline" onClick={() => returnTo('engines')}>Change engine</Button>
+              <Button size="sm" variant="outline" onClick={() => returnTo('years')}>Change vehicle</Button>
+            </div>
+            <p className="max-w-sm pb-2">{vehicleNotice ? 'Current choice applies for this visit.' : 'Vehicle saved for your next visit.'} Browse without changing it; choose another engine to switch.</p>
+          </details>
+          <Button size="sm" variant="outline" className="min-h-9" onClick={() => clearVehicle()}>Clear vehicle</Button>
         </div>
-        <p className="w-full">{vehicleNotice ? 'Current choice applies for this visit.' : 'This choice is kept for your next visit.'} Change vehicle keeps it active until you choose another.</p>
       </div>}
       {vehicleNotice && <p role="status" className="w-full text-foreground" data-testid="vehicle-storage-notice">
         {vehicleNotice} <button className="underline" onClick={() => activeVehicle ? rememberVehicle(activeVehicle) : clearVehicle(false)}>Retry {activeVehicle ? 'saving vehicle' : 'clearing saved vehicle'}</button>
@@ -168,7 +179,7 @@ export default function App() {
       {!vehicleContext && <span className="font-semibold text-foreground" role="status">All vehicles. Select a vehicle to narrow results.</span>}
     </div>
     <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
-      <main className="flex-1 min-w-0 overflow-auto p-4">
+      <main className="flex-1 min-w-0 overflow-auto p-3">
         {searchQuery && <div className="mb-6">{renderParts()}<button className="text-sm underline my-3" onClick={() => textSearch('')}>Return to vehicle catalog</button></div>}
         <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleSelect={selectVehicle} activeVehicle={activeVehicle} selectedFitment={selectedFitment}
           renderPartsInline={() => !searchQuery && selectedFitment ? renderParts() : null} />

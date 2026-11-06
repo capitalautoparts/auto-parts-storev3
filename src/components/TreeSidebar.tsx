@@ -25,7 +25,7 @@ export interface TreeSidebarHandle {
   focusVehiclePicker: () => void;
   expandToVehicle: (result: VehicleSearchResult) => void;
   expandToCategory: (result: VehicleSearchResult) => void;
-  revealSelection: (target: 'categories' | 'engines' | 'years', vehicle: VehicleContext, category?: Category) => void;
+  revealSelection: (target: 'categories' | 'engines' | 'years' | 'makes' | 'models' | 'selection', vehicle: VehicleContext, category?: Category) => void;
 }
 
 export interface VehicleExpansion {
@@ -82,19 +82,25 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
     focusVehiclePicker: () => setFocusTarget('vehicle-picker'),
     revealSelection: (target, vehicle, category) => {
       const { year, makeId, modelId, engineId } = vehicle;
-      if (target !== 'years') {
-        setExpandedYears(prev => new Set(prev).add(year));
-        setExpandedMakes(prev => new Set(prev).add(`${year}-${makeId}`));
-        setExpandedModels(prev => new Set(prev).add(`${year}-${makeId}-${modelId}`));
-      }
+      const makeKey = `${year}-${makeId}`;
+      const modelKey = `${makeKey}-${modelId}`;
       const engineKey = `${year}-${makeId}-${modelId}-${engineId}`;
-      if (target === 'categories' && engineId !== undefined) {
+      if (target !== 'years') setExpandedYears(prev => new Set(prev).add(year));
+      if (['models', 'engines', 'categories', 'selection'].includes(target)) setExpandedMakes(prev => new Set(prev).add(makeKey));
+      if (['engines', 'categories', 'selection'].includes(target)) setExpandedModels(prev => new Set(prev).add(modelKey));
+      if (['categories', 'selection'].includes(target) && engineId !== undefined) {
         setExpandedEngines(prev => new Set(prev).add(engineKey));
-        if (category?.parentId) setExpandedCategories(prev => new Set(prev).add(`${engineKey}-${category.parentId}`));
       }
-      setFocusTarget(target === 'years' ? `vehicle-year-${year}` : engineId === undefined
-        ? `vehicle-model-${year}-${makeId}-${modelId}` : target === 'engines' ? `vehicle-engine-${engineKey}`
-        : category ? `vehicle-category-${engineKey}-${category.parentId ?? category.id}` : `vehicle-categories-${engineKey}`);
+      if (target === 'selection' && category) {
+        setExpandedCategories(prev => new Set(prev).add(`${engineKey}-${category.parentId ?? category.id}`));
+      }
+      // Focus the disclosure whose choices were requested, never its selection
+      // action. A breadcrumb reveal changes no active vehicle or results state.
+      setFocusTarget(target === 'years' || target === 'makes' ? `vehicle-year-${year}`
+        : target === 'models' ? `vehicle-make-${makeKey}`
+        : target === 'engines' || engineId === undefined ? `vehicle-model-${modelKey}`
+        : target === 'selection' && category ? `vehicle-category-${engineKey}-${category.id}`
+        : `vehicle-categories-toggle-${engineKey}`);
     },
     expandToVehicle: (result: VehicleSearchResult) => {
       if (!result.year) return;
@@ -207,10 +213,9 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
 
   return (
     <div ref={root} className="w-full min-w-0" data-testid="vehicle-tree">
-      <h2 id="vehicle-picker" tabIndex={-1} className="py-2 text-xs uppercase tracking-[0.3em] font-display text-foreground font-semibold">
-        Part Catalog · Choose a vehicle
+      <h2 id="vehicle-picker" tabIndex={-1} className="py-1 text-sm font-display text-foreground font-semibold">
+        Part Catalog
       </h2>
-      <p className="mb-2 text-xs text-muted-foreground">Open branches to browse. Select an engine or part category to set the current vehicle.</p>
 
       {yearsLoading && <p role="status" className="p-2 text-sm">Loading vehicle catalog…</p>}
       {(yearsError || categoriesError) && <div role="alert" className="p-3 text-sm text-red-700">{(yearsError || categoriesError)?.message}<button onClick={() => {
@@ -562,7 +567,7 @@ function EngineNode({
     && selectedPath.modelId === model.id && selectedPath.engineId === engine.id;
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)]">
-      <button onClick={onToggle} aria-label={`${isExpanded ? 'Collapse' : 'Expand'} categories for ${engine.name}`}
+      <button id={`vehicle-categories-toggle-${engineKey}`} onClick={onToggle} aria-label={`${isExpanded ? 'Collapse' : 'Expand'} categories for ${engine.name}`}
         aria-expanded={isExpanded} aria-controls={`vehicle-categories-${engineKey}`}
         className={cn("p-2 rounded-l flex items-center justify-center hover:bg-muted", isCurrent && "bg-accent")}>
         {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -685,6 +690,7 @@ function CategoryNode({
             return (
               <div key={child.id}>
                 <button
+                  id={`vehicle-category-${year}-${make.id}-${model.id}-${engineId}-${child.id}`}
                   aria-current={isChildSelected ? 'true' : undefined}
                   onClick={() =>
                     onPartTypeClick({

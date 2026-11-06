@@ -1,9 +1,9 @@
 # Design system: Roy's Auto
 
-Status: the brand theme exists as `roys-auto-theme.patch` (12 files; outlined wordmark, tokens, favicon) in
-`/srv/dev/reports/infra/roysauto-2026-11-06/`. **It is being ported in a separate PR (Phase 1)**; until that merges, `src/index.css`
-still holds the old red Capital Auto Parts values. Check `src/index.css` before relying on the values below. The patch also touches
-`src/pages/CheckoutPage.tsx` and `OrderConfirmationPage.tsx`, which no longer exist on staging; drop those hunks when porting.
+Status: the Roy's theme is present on staging in `src/index.css` and `src/components/Logo.tsx`.
+The original `roys-auto-theme.patch` and mockups in `/srv/dev/reports/infra/roysauto-2026-11-06/`
+are historical brand references. The compact navigation pass keeps those tokens and wordmark;
+current integrated checks, rather than the older mockup spacing and floating cart, establish layout behavior.
 
 ## Tokens (from the patch, `src/index.css` `:root`)
 
