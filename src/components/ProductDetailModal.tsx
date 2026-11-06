@@ -14,12 +14,14 @@ import { ShoppingCart, Check, FileText, ExternalLink, Package, Info } from "luci
 import { cn } from "@/lib/utils";
 import type { Part } from "@/lib/api";
 import { availabilitySummary } from "@/lib/availability";
+import type { ReactNode } from 'react';
 
 interface ProductDetailModalProps {
   part: Part | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddToCart: (partId: string | number) => void;
+  fitmentStatus?: ReactNode;
 }
 
 const tierConfig = {
@@ -50,6 +52,7 @@ export function ProductDetailModal({
   open,
   onOpenChange,
   onAddToCart,
+  fitmentStatus,
 }: ProductDetailModalProps) {
   if (!part) return null;
 
@@ -99,6 +102,7 @@ export function ProductDetailModal({
             {/* Product details */}
             <div className="flex-1 min-w-0">
               <p className="text-sm text-muted-foreground mb-2">{part.description}</p>
+              {part.descriptionText && <p className="text-sm mb-3">{part.descriptionText}</p>}
 
               <div className="flex items-baseline gap-2 mb-3">
                 <span className="text-2xl font-bold text-brand-ink">{part.price === null ? "Price unavailable" : `$${part.price.toFixed(2)}`}</span>
@@ -132,7 +136,7 @@ export function ProductDetailModal({
             <div className="flex flex-col gap-2">
               <Button
                 onClick={handleAddToCart}
-                disabled={part.price === null}
+                disabled={part.price === null || part.purchasable === false}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <ShoppingCart className="h-4 w-4 mr-2" />
@@ -238,6 +242,7 @@ export function ProductDetailModal({
               </TabsContent>
 
               <TabsContent value="fitments" className="m-0 p-0 bg-white">
+                {fitmentStatus}
                 <div className="p-3 text-sm"><strong>Application notes</strong>{part.applicationNotes?.length ? part.applicationNotes.map((note, index) => <p className="py-2 border-b" key={index}>{note}</p>) : <p>No application notes supplied. Verify fitment before purchase.</p>}</div>
                 {part.fitments && part.fitments.length > 0 ? (
                   <table className="w-full text-sm">
@@ -258,10 +263,10 @@ export function ProductDetailModal({
                             index % 2 === 0 ? "bg-white" : "bg-gray-50"
                           )}
                         >
-                          <td className="px-3 py-2">{fitment.year}</td>
+                          <td className="px-3 py-2">{fitment.year}{fitment.yearEnd && fitment.yearEnd !== fitment.year ? `–${fitment.yearEnd}` : ''}</td>
                           <td className="px-3 py-2">{fitment.make}</td>
                           <td className="px-3 py-2">{fitment.model}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{fitment.engine || "-"}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{fitment.engine || "Not supplied"}{fitment.notes && <p>{fitment.notes}</p>}</td>
                         </tr>
                       ))}
                     </tbody>

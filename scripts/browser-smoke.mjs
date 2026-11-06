@@ -229,7 +229,7 @@ try {
   report.ald1212mCadPrice = aldPrice;
   const row = page.locator('[data-part-id="DVNJ_ALD1212M"]');
   const rowAvailability = await row.getByTestId('part-availability').textContent();
-  await row.getByRole('button', { name: 'Details', exact: true }).click();
+  await row.getByRole('link', { name: 'Details', exact: true }).click();
   assert.ok((await page.getByRole('dialog').getByTestId('part-availability').textContent()).startsWith(rowAvailability));
   await page.getByRole('tab', { name: 'Fitments', exact: true }).click();
   assert.match(await page.getByRole('dialog').textContent(), /Application notes/);

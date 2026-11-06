@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ShoppingCart, Check, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProductImage } from "@/components/ProductImage";
-import { ProductDetailModal } from "@/components/ProductDetailModal";
+import { productPath, validSku } from "../../server/product-data.ts";
+import { followProduct } from "@/features/catalog/product-navigation";
 import { WishlistButton } from "@/components/wishlist/WishlistButton";
 import type { Part } from "@/lib/api";
 import { availabilitySummary } from "@/lib/availability";
@@ -38,14 +38,6 @@ const tierConfig = {
 };
 
 export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
-  const [selectedPart, setSelectedPart] = useState<Part | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const handlePartClick = (part: Part) => {
-    setSelectedPart(part);
-    setModalOpen(true);
-  };
-
   // Group parts by position
   const groupedParts = parts.reduce((acc, part) => {
     const position = part.position || "Other";
@@ -85,6 +77,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                   const availability = availabilitySummary(part);
                   const formattedPrice = part.price === null ? "Price unavailable" : `$${part.price.toFixed(2)}`;
                   const isEvenRow = index % 2 === 0;
+                  const href = validSku(part.id) ? productPath(part.id) : undefined;
 
                   return (
                     <tr
@@ -96,8 +89,9 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                       )}
                     >
                       <td className="p-3 w-16 align-top">
-                        <button
-                          onClick={() => handlePartClick(part)}
+                        <a
+                          href={href}
+                          onClick={event => followProduct(event, String(part.id))}
                           className="hover:opacity-80 transition-opacity"
                         >
                           <ProductImage
@@ -105,7 +99,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                             alt={`${part.brand} ${part.partNumber}`}
                             className="w-12 h-12"
                           />
-                        </button>
+                        </a>
                       </td>
 
                       <td className="p-3 w-24 align-top">
@@ -121,13 +115,14 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                       </td>
 
                       <td className="p-3 w-48 align-top">
-                        <button
-                          onClick={() => handlePartClick(part)}
+                        <a
+                          href={href}
+                          onClick={event => followProduct(event, String(part.id))}
                           className="text-left hover:text-brand-navy transition-colors"
                         >
                           <div className="font-semibold text-sm">{part.brand}</div>
                           <div className="text-xs text-muted-foreground">{part.partNumber}</div>
-                        </button>
+                        </a>
                       </td>
 
                       <td className="p-3 min-w-56 align-top">
@@ -164,14 +159,13 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                             </Button>
                             <WishlistButton partId={part.id} part={part} size="sm" />
                           </div>
-                          <Button
-                            onClick={() => handlePartClick(part)}
+                          <Button asChild
                             variant="outline"
                             size="sm"
                             className="w-full"
                           >
-                            <Info className="h-4 w-4 mr-1" />
-                            Details
+                            <a href={href} aria-disabled={!href} onClick={event => followProduct(event, String(part.id))}><Info className="h-4 w-4 mr-1" />
+                            Details</a>
                           </Button>
                         </div>
                       </td>
@@ -183,13 +177,6 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
           </div>
         </div>
       ))}
-
-      <ProductDetailModal
-        part={selectedPart}
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        onAddToCart={onAddToCart}
-      />
     </div>
   );
 }
