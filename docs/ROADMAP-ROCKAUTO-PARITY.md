@@ -71,7 +71,7 @@ Constraints that bind every WP below:
 | Rule | Meaning for this roadmap |
 | --- | --- |
 | D1492 | Canada / CAD first (`MARKET` in `model.ts`). ERP staging reads only. Protected previews and the existing main test site. No new credentials, production domains, Shopify checkout, payment processing or business-data mutations. |
-| D1575 | The catalog-connected test site moves to our own servers, same pattern as capautov3 staging, and reads ERP staging over the LAN, not through Cloudflare. That is an infra-owned PR and swaps the single fixed upstream in `server/catalog-proxy.ts`. This roadmap must not add a second upstream. |
+| D1575 | The catalog-connected test site moves to our own servers, same pattern as capautov3 staging, and reads ERP staging over the LAN, not through Cloudflare. That is an infra-owned PR (PR #9) that ADDS an on-prem upstream (`http://192.168.88.233/api/erp`, only when `ROYS_ONPREM=1`, denied on Vercel) and keeps the Vercel gateway `https://staging.autrex.ca/api/erp` for design previews. Each deployment target has exactly one fixed upstream. This roadmap must not add any further upstream or automatic alternate route. |
 | Checkout | Disabled until Brian opens it. Every WP that touches order placement, payment or customer accounts is marked **blocked until Brian opens checkout**. |
 | Browser | No credentials or database URL in the browser or this repo. Browser calls go only to same-origin `/api/catalog`. |
 | ERP | This repo never changes the ERP. Missing ERP behaviour becomes an ask in section 6 for the ERP lanes. |
@@ -97,7 +97,7 @@ allowlist grows. ERP routes are in `AutoProPartsERP/server/src/routes/public-api
 | 3 | Part-number search | Dedicated "Part Number Search" tab, accepts brand-agnostic number. | `q` in the header search, 2-character minimum. | Yes via `search?q=`. Quality of exact-match ranking is untested. | Ask E2 only if exact/normalized part-number match is weak. | R3 |
 | 4 | Interchange / cross-reference | Part number search also shows OE and aftermarket equivalents. | `Part.interchanges` type and an "Interchanges" tab in `ProductDetailModal.tsx`. Never populated. | Not in the Roy's proxy. ERP has `GET /v1/interchange/:partNumber`, `/v1/interchange/search` (`public-api/v1/interchange.ts`) and `/v1/products/:sku/interchanges`. All are permitted by `erp-browser-policy.ts`. | **proxy+**. Ask E2 only for response shape gaps. | R6 |
 | 5 | VIN lookup | Not a core RockAuto feature (it is vehicle picker based). Roy's mockup shows a VIN Lookup button. | Header button only. | No. `server/src/routes/vin.ts` (`POST /decode`) requires staff permission `products:View`. Not in the browser policy. Related: `fitment/resolve-vehicle` exists. | **ERP ask E1**: public VIN decode returning year/make/model/engine ids. | R8 |
-| 6 | Multiple tiers per part (economy / daily driver / premium) | Each part type lists several brands at different prices and quality, grouped by position, cheapest first. | Tier column exists, never populated. Position grouping works. | Brands and prices are returned in `search`. There is no explicit tier or quality field. | **ERP ask E4**: `quality_tier` and `warranty` on each search result. Until then R4 may derive tiers client-side from price rank within a part type, labelled "Price tier". | R4 |
+| 6 | Multiple tiers per part (economy / daily driver / premium) | Each part type lists several brands at different prices and quality, grouped by position, cheapest first. | Tier column exists, never populated. Position grouping works. | Brands and prices are returned in `search`. There is no explicit tier or quality field. | **ERP ask E4**: `quality_tier` and `warranty` on each search result. Until then R4 hides the Tier column (no derived tiers; see WP-R4). | R4 |
 | 7 | Position (front/rear/left/right) | Position is a first-class group heading. | Grouped by `fitment_qualifiers` "position". | Yes if the qualifier is present. Policy also permits `pcdb/positions`. | None for now. | R4 |
 | 8 | Warranty | Warranty shown per listing and on a Warranties page. | `warranty` field is `''` always. UI row hidden. | Not exposed. | **ERP ask E4** (same). | R4 |
 | 9 | Dense fast tables, wholesaler feel | Compact rows, no pagination feeling, many brands visible, prices prominent. | 24 per page, paged. Rows are tall (see mockup). | Page size capped at 24 by Roy's proxy. | Optional: raise the limit if ERP allows (ask E7). | R5 |
@@ -121,16 +121,20 @@ allowlist grows. ERP routes are in `AutoProPartsERP/server/src/routes/public-api
 | Part-type click to first table rows | < 500 ms p95 (stretch goal, not a hard gate) | Search with fitment is heavier than a tree node. |
 | Search (text or part number) to first results | **< 300 ms p95** server round trip | Measured at the proxy. |
 | Add to cart, marker update | < 50 ms | Local state only. |
-| Table scroll | 60 fps with 500 rows | Virtualized. |
+| Table scroll | 60 fps; 240 loaded rows at today's 24-per-page cap, 500 rows once E7 ships | Virtualized. |
 
 Caching strategy:
 
 1. Proxy: reference routes (`years`, `makes`, `models`, `engines`, `categories`,
    `category`) change rarely. Today the Roy's handler sends `Cache-Control: no-store`
-   on everything. Change reference routes to `public, max-age=300, stale-while-revalidate=3600`
-   and keep `no-store` for `search`. capautov3 already caches static VCDB paths for
+   and `X-Robots-Tag: noindex` on everything, which is the staging posture. Caching is enabled
+   per deployment target: only where infra approves it (for example the on-prem host
+   behind its own proxy) are reference routes changed to
+   `public, max-age=300, stale-while-revalidate=3600`; `search` stays `no-store`. On the
+   staging `no-store`/`noindex` path nothing changes unless Brian or infra approves it, and
+   `noindex` is kept everywhere. capautov3 already caches static VCDB paths for
    1 h at the edge with 24 h stale-while-revalidate (see its ERP route handler, around
-   the "Static VCDB/fitment paths" comment), which is the model. Do this in WP-R1.
+   the "Static VCDB/fitment paths" comment), which is the model. Do this in WP-R1, behind a per-target switch that defaults to off.
 2. Browser: keep the in-memory `reference()` cache. Add a persistent, versioned
    `sessionStorage` copy of the year list and last vehicle's branches so a reload
    expands instantly. Respect the existing storage-failure handling (`safeStorage`).
@@ -195,6 +199,13 @@ mobile 390, both screenshots attached to the PR. Do not duplicate active CI.
   - Removing the last line clears the marker.
   - Rows already in the cart show "In cart (n)" and a quantity stepper.
   - Existing cart cap (100 lines) and validation in `decodeCart` unchanged.
+  - Versioned cart migration: lines gain `partTypeId`, so the storage key moves from
+    `roysauto.original-cart.v1` (`CART_KEY` in `src/lib/erp-api.ts`) to
+    `roysauto.original-cart.v2`. On load, a valid v1 cart is migrated line by line
+    (`partTypeId` unset, markers appear once the part is next seen in a result) and written
+    as v2; corrupt or unrecognised v1 data is dropped safely with no crash; the v1 key is
+    removed only after the v2 write succeeds. A unit test in `tests/catalog.test.ts`
+    covers v1 valid, v1 corrupt, v2 present (v1 ignored) and storage unavailable.
   - Markers survive reload (localStorage) and have an accessible name.
 - Visual: 1440 tree plus right Quick Cart. 390 cart sheet and tree marker visible.
 
@@ -203,39 +214,50 @@ mobile 390, both screenshots attached to the PR. Do not duplicate active CI.
 - Scope: `Header.tsx`, `VehicleSearchBar.tsx`, `App.tsx`, `src/lib/erp-api.ts`.
 - Dependencies: none. A result-quality finding feeds ask E2.
 - Acceptance:
-  - A tab or mode switch labelled Part Number Search; input trims, uppercases, ignores
-    spaces and dashes for display only (the query is sent verbatim).
+  - A tab or mode switch labelled Part Number Search; input is trimmed and shown as typed.
+    One normalization is used everywhere (client, tests, and ask E2): for matching,
+    uppercase and strip spaces, dashes and dots (`ald-1212`, `ALD 1212` and `ALD1212` all
+    match as `ALD1212`). The normalized form is what is sent as `q` for part-number mode;
+    the original text is displayed. Underscores are not stripped (`DVNJ_ALD1212M` is a SKU).
+    A unit test covers those four inputs.
   - Exact SKU or part number (for example `DVNJ_ALD1212M`, which `docs/staging-catalog-gateway.md`
     records) returns the part first.
   - Fewer than two characters shows the existing error without a request.
   - "No match" state offers vehicle search.
 - Visual: 1440 and 390, input does not overflow, keyboard on mobile does not hide results.
 
-**WP-R4: Tiered, grouped part table** (M, yes with derived tiers)
+**WP-R4: Tiered, grouped part table** (M, yes for grouping, warranty and core charge; tiers need E4)
 - Goal: economy / daily driver / premium rows grouped by position with warranty.
 - Scope: `PartsTable.tsx`, `src/lib/erp-api.ts` (`mapErpPart`), `src/lib/api.ts`.
-- Dependencies: ERP ask E4 for real `quality_tier` and `warranty`. Without it, derive
-  a "Price tier" from price rank within the part type (lowest third economy, middle
-  third daily driver, top third premium) and show no invented warranty text.
+- Dependencies: ERP ask E4 for real `quality_tier` and `warranty`. Until E4 ships,
+  hide the Tier column and show no tier, no invented warranty text. A price rank within one
+  page of 24 is unstable across pages, filters and sorts, so it is not used. Recommended:
+  ship R4 without tiers. Optional explicit interim, only if Brian wants it: a "Price rank"
+  label (not "tier") computed per part type within the current vehicle result set, over
+  all fetched pages, recomputed when pages load, and shown only after the last page has
+  loaded or when the set has at most 24 results.
 - Acceptance:
-  - Tier badge populated for every row; derived tiers are labelled as price tiers, not
-    quality claims.
+  - With no E4 data the Tier column is absent (not an empty cell). With E4 data, the badge
+    is populated for each row that has a `quality_tier`.
   - Within each position group, rows sort by tier then price. Rows with null price sort last
     and show "Price unavailable" (existing `priceLabel` behaviour).
   - Core charge, pack quantity and stock state shown on the row.
-  - When the ERP supplies `quality_tier` and `warranty`, they win over derived values (unit test with both).
+  - When the ERP supplies `quality_tier` and `warranty`, they are shown as supplied (unit test with and without E4 fields).
 - Visual: 1440 compact rows; 390 stacked card rows, no truncated price.
 
 **WP-R5: Dense table and virtualization** (M, yes)
 - Goal: wholesaler density and smooth scroll.
 - Scope: `PartsTable.tsx`, a small windowing helper in `src/lib/`, `package.json` only
   if a windowing library is justified (prefer in-repo code).
-- Dependencies: WP-R4. Optionally E7 (higher page size).
+- Dependencies: WP-R4. The 500-row criterion depends on E7 (page size above 24); the
+  proxy today caps at 24 per page and 100 pages.
 - Acceptance:
   - Row height reduced to a compact layout that fits at least 12 rows in a 900 px tall
     desktop viewport.
-  - Rendering 500 rows keeps scroll at 60 fps in the Firefox trace; DOM node count stays
-    bounded.
+  - At the real page size (24 rows per page): appending pages up to N = 10 loaded pages
+    (240 rows) keeps scroll smooth (no frame over 50 ms in the Firefox trace) and the DOM node
+    count bounded by the window, not by loaded rows.
+  - Only after E7 ships: the same trace with 500 rows loaded at limit 100.
   - Keyboard navigation and screen reader row semantics are retained.
 - Visual: 1440 about 12 rows visible; 390 cards at 4+ rows per screen.
 
@@ -270,19 +292,22 @@ Each PR must show the exact new patterns copied from `erp-browser-policy.ts`.
 **WP-R8: VIN lookup** (M, no, **ERP ask E1**)
 - Goal: enter a 17-character VIN, land on the right vehicle in the tree.
 - Scope: `Header.tsx` (existing VIN Lookup button), proxy resource `vin`, `VehicleSearchBar.tsx`.
-- Dependencies: ERP ask E1. Do not use the staff `vin.ts` route.
+- Dependencies: ERP ask E1 and the same read-only POST decision as R9. Do not use the staff
+  `vin.ts` route.
 - Acceptance:
   - VIN validated client side (17 chars, no I/O/Q, check digit) before any request.
   - A decoded vehicle expands the tree to the engine level; partial decode asks for the missing step.
-  - No VIN is logged or stored (privacy). Rate limited by the ERP.
+  - The VIN travels only in a POST body, never in a URL or query string, so it does not
+    reach access logs; the proxy does not log request bodies. Not stored. Rate limited by the ERP.
   - Fallback copy when decode is unavailable.
 - Visual: 1440 modal; 390 full screen, numeric keyboard hint off (VIN is alphanumeric).
 
 **WP-R9: Shipping estimate and ship-from** (M, no, **ERP ask E5**)
 - Goal: replace mock shipping in the Quick Cart with a real estimate by postal code.
 - Scope: `RightCartPanel.tsx`, proxy resource `shipping_estimate`, `erp-api.ts`.
-- Dependencies: E5, and Brian's decision on allowing a read-only POST (the proxy is GET-only
-  today; prefer a GET estimate in E5 so the allowlist stays GET-only).
+- Dependencies: E5, and the decision entry for a narrowly allowlisted read-only POST (the
+  proxy is GET-only today). Postal code and SKUs go in a POST body so they do not land in
+  nginx or Cloudflare access logs.
 - Acceptance:
   - Mock options removed. Estimate shown as "estimate, CAD, before tax" with the ship-from location.
   - Invalid postal code (Canadian A1A 1A1 format) handled client side.
@@ -317,12 +342,15 @@ then Phase C when Brian opens it.
 All are read-only, CAD, public, rate limited, and must not expose cost, vendor names
 or internal ids that identify suppliers. Shapes are proposals.
 
-**E1. Public VIN decode.** `GET /api/v1/vehicles/vin/{vin}`.
+**E1. Public VIN decode.** `POST /api/v1/vehicles/vin/decode` with body `{ "vin": "<17 chars>" }`
+(not a GET: a VIN in a query string lands in nginx and Cloudflare logs). If infra prefers GET, the
+ERP lane must instead guarantee redaction of the query string in all access logs.
 Response: `{ vin, valid, vehicle: { year, make, model, submodel?, engine: { id, description }, base_vehicle_id }, confidence, alternatives: [] }`.
 Today only the staff-only `POST /decode` in `server/src/routes/vin.ts` exists.
 
 **E2. Part-number and interchange search contract.** Confirm that `GET /api/v1/search?q=` ranks exact
-and normalized part-number matches first, and document `GET /api/v1/interchange/{partNumber}`:
+and normalized part-number matches first (normalization: uppercase, strip spaces, dashes and
+dots; underscores kept), and document `GET /api/v1/interchange/{partNumber}`:
 `{ part_number, brand, equivalents: [{ part_number, brand_name, type: "oe"|"aftermarket", sku? }] }`.
 Routes exist (`public-api/v1/interchange.ts`); the ask is a stable documented shape and exact-match ranking.
 
@@ -335,10 +363,11 @@ so empty branches are hidden. A similar route exists in `erp-browser-policy.ts`
 `warranty: { months: number|null, label: string|null }`, `part_type_id`, `position`,
 `ship_from: { location_id, city, province }|null`. All nullable and additive.
 
-**E5. Shipping estimate.** Prefer `GET /api/v1/shipping/estimate?postal_code=A1A1A1&skus=SKU1:2,SKU2:1`
+**E5. Shipping estimate.** `POST /api/v1/shipping/estimate` with body
+`{ "postal_code": "A1A1A1", "lines": [{ "sku": "SKU1", "quantity": 2 }] }` (a body, not a query string,
+so postal code and SKUs stay out of access logs; if GET is chosen instead, log redaction is required)
 returning `{ currency: "CAD", options: [{ id, label, amount, eta_days_min, eta_days_max }], ship_from, disclaimer }`.
-`POST /api/erp/shipping/calculate` exists in the policy but is POST. A GET keeps the Roy's
-proxy GET-only.
+`POST /api/erp/shipping/calculate` already exists in the capautov3 policy; E5 may be that route if its response meets this shape.
 
 **E6. Order status lookup.** `POST` or `GET /api/v1/orders/status` with `order_number` plus `email` (or signed token),
 returning `{ status, lines, shipments: [{ carrier, tracking_number, tracking_url }] }`.
@@ -357,10 +386,16 @@ staging with a representative 1M-part load, cache headers
 
 ## 7. Risks and decisions for Brian
 
-- D1575 hosting move changes the upstream; re-check this plan's proxy WPs after it lands.
-- A read-only POST (E5 variant) needs Brian's approval; GET is the default.
-- Derived price tiers (WP-R4) could mislead buyers if shown as quality; keep the label
-  "Price tier" until E4 ships.
+- D1575 (PR #9) adds an on-prem upstream beside the Vercel preview gateway; re-check this plan's
+  proxy WPs after it lands so each new resource works on both targets.
+- Decision entry for Brian/infra: allow a narrowly allowlisted read-only POST in the Roy's proxy
+  for exactly two routes (VIN decode E1, shipping estimate E5), with body validation, no body
+  logging and the same single fixed upstream per target. Recommended: yes. Alternative: GET plus
+  enforced query-string redaction in nginx and Cloudflare logs.
+- Decision: cache headers on reference routes per deployment target; the staging
+  `no-store`/`noindex` path stays as is unless approved.
+- Price tiers stay hidden until E4 supplies real ones; any interim "Price rank" label needs
+  Brian's approval because it could be read as quality.
 - Do not copy RockAuto's text, imagery or exact layout. Behaviours are not protectable;
   the page design must stay Roy's Auto.
-- VIN and postal code are personal data in logs: no logging of either at proxy or browser.
+- VIN and postal code are personal data: bodies only, never in URLs, and no logging of either at proxy or browser.
