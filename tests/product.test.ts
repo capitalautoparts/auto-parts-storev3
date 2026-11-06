@@ -46,6 +46,190 @@ test('product mapper uses the ERP retail contract and fails safe for unknown pri
   assert.equal(productMeta(mapped).canonical, `/products/${sku}`);
 });
 
+// ERP4e3ed42e public products.ts response shapes; synthetic values exercise
+// preservation/safety, not product fitment or live-stock assertions.
+const factsProduct = (fields: Record<string, unknown>) => ({ product: { ...product().product, ...fields } });
+
+test('ordered public specs keep meaningful repeats/units and suppress unresolved and pipeline attributes', () => {
+  const mapped = mapProduct(factsProduct({ specs_list: [
+    { name: 'Length', value: '10', unit: 'mm' },
+    { name: 'Length', value: '12', unit: 'mm' },
+    { name: 'Length', value: '10', unit: 'in' },
+    { name: 'Length', value: '10', unit: 'mm' },
+    { name: 'Material', value: 'NA' }, { name: 'ABS', value: 'No' }, { name: 'SAE', value: 0 },
+    ...['12345', 'LIF', 'WS1', 'HTS', 'CTO', 'MSR', 'WT1', 'WD1', 'HAC', 'WD2', 'WT2', 'raw_key', 'Research Required', 'Size Lookup',
+      'Offset Source', 'Manufacturer Finish Description', 'Unknown'].map(name => ({ name, value: 'private' })),
+  ], specifications: { Length: '99', Color: 'Black', 'Mounting Hardware Included': 'None',
+    raw_key: 'private', '123': 'private', MSR: 'private', WT1: 'private', WD1: 'private', HAC: 'private', WD2: 'private', WT2: 'private', LIF: '2', WS1: '1 Year Warranty', 'Build Type Source': 'private' },
+  }), sku);
+  assert.deepEqual(mapped.productFacts?.specsList, [
+    { name: 'Length', value: '10', unit: 'mm' }, { name: 'Length', value: '12', unit: 'mm' },
+    { name: 'Length', value: '10', unit: 'in' }, { name: 'Material', value: 'NA' }, { name: 'ABS', value: 'No' }, { name: 'SAE', value: '0' },
+    { name: 'Color', value: 'Black' }, { name: 'Mounting Hardware Included', value: 'None' },
+  ]);
+  assert.deepEqual(mapped.specs, { Length: '10 mm; 12 mm; 10 in', Material: 'NA', ABS: 'No', SAE: '0', Color: 'Black', 'Mounting Hardware Included': 'None' });
+  assert.equal(mapped.warranty, '');
+  assert.doesNotMatch(productSchema(mapped), /LIF|WS1|private|Warranty/);
+});
+
+test('supplied short/long descriptions and languages survive without treating text as markup', () => {
+  const mapped = mapProduct(factsProduct({ description_short: 'Résumé court', description_language: 'fr',
+    description_long: '<script>Long supplier text</script>', description_long_language: 'en',
+    descriptions: [{ code: 'EXT', type: 'Extended', text: '<script>Long supplier text</script>', language: 'en' },
+      { code: 'MKT', type: 'Marketing', text: 'Texte fourni', language: 'fr' }],
+  }), sku);
+  assert.equal(mapped.descriptionText, 'Résumé court');
+  assert.deepEqual(mapped.productFacts?.descriptions, [
+    { kind: 'short', text: 'Résumé court', language: 'fr' },
+    { kind: 'long', text: '<script>Long supplier text</script>', language: 'en' },
+    { kind: 'other', type: 'Extended', code: 'EXT', text: '<script>Long supplier text</script>', language: 'en' },
+    { kind: 'other', type: 'Marketing', code: 'MKT', text: 'Texte fourni', language: 'fr' },
+  ]);
+  assert.doesNotMatch(productSchema(mapped), /<script>/);
+  assert.equal(mapProduct(factsProduct({ description_short: ' ', description_long: 'Useful long' }), sku).descriptionText, 'Useful long');
+});
+
+test('only safe supplied public media URLs survive, with no invented document MIME or image caption', () => {
+  const mapped = mapProduct(factsProduct({ media: {
+    images: ['javascript:alert(1)', 'https://cdn.example.test/one.jpg', 'https://cdn.example.test/two.jpg',
+      'https://user:secret@cdn.example.test/private', '//cdn.example.test/relative', 'http://cdn.example.test/plain',
+      'https://cdn.example.test/one.jpg', {}, 'https://cdn.example.test/a\n.jpg'],
+    videos: ['https://cdn.example.test/supplied-video'], documents: ['https://cdn.example.test/supplied-document'],
+  } }), sku);
+  assert.equal(mapped.imageUrl, 'https://cdn.example.test/one.jpg');
+  assert.deepEqual(mapped.productFacts?.media, { images: ['https://cdn.example.test/one.jpg', 'https://cdn.example.test/two.jpg'],
+    videos: ['https://cdn.example.test/supplied-video'], documents: ['https://cdn.example.test/supplied-document'] });
+  assert.equal(mapped.assets, undefined, 'An untyped supplied document must not become a PDF claim');
+  assert.equal(mapped.productFacts?.sections.images, 'partial');
+});
+
+test('inline references preserve NR/type/source notes in both typed facts and the legacy visible Notes cell', () => {
+  const mapped = mapProduct(factsProduct({ interchanges: { count: 3, items: [
+    { brand: 'Supplier A', part_number: 'AB+12', type: 'NR', type_name: 'Not Recommended', notes: 'Different connector' },
+    { brand: 'Supplier B', part_number: 'OE-1', type: 'OE', type_name: 'Original Equipment', notes: null },
+    { brand: 'Supplier C', part_number: 'X', type: null, type_name: null, notes: 'Reference only' },
+  ] }, fitment_qualifiers: [{ name: 'Position', value: 'Rear' }, { name: 'Engine VIN', value: 'J only' }] }), sku);
+  assert.deepEqual(mapped.productFacts?.interchanges[0], { brand: 'Supplier A', partNumber: 'AB+12', type: 'NR', typeName: 'Not Recommended', notes: 'Different connector' });
+  assert.equal(mapped.interchanges?.[0].notes, 'NR · Not Recommended · Different connector');
+  assert.equal(mapped.interchanges?.[1].notes, 'OE · Original Equipment');
+  assert.equal(mapped.interchanges?.[2].notes, 'Reference only');
+  assert.deepEqual(mapped.productFacts?.applicationQualifiers, [{ name: 'Position', value: 'Rear' }, { name: 'Engine VIN', value: 'J only' }]);
+  assert.deepEqual(mapped.applicationNotes, ['Check position', 'Position: Rear', 'Engine VIN: J only']);
+  assert.deepEqual(mapped.specs, {});
+  assert.deepEqual(mapped.fitments, []);
+});
+
+test('secondary states distinguish absent, genuine empty, malformed and partially usable data', () => {
+  const absent = mapProduct(factsProduct({ media: undefined }), sku).productFacts!;
+  assert.equal(absent.sections.interchanges, 'absent');
+  assert.equal(absent.sections.specsList, 'absent');
+  assert.equal(absent.sections.images, 'absent');
+  const empty = mapProduct(factsProduct({ specs_list: [], specifications: {}, descriptions: [],
+    media: { images: [], documents: [], videos: [] }, interchanges: { count: 0, items: [] }, fitment_qualifiers: [] }), sku).productFacts!;
+  for (const state of Object.values(empty.sections)) assert.equal(state, 'empty');
+  const malformed = mapProduct(factsProduct({ specs_list: {}, specifications: [], descriptions: 'oops',
+    media: false, interchanges: { count: 2, items: [] }, fitment_qualifiers: 'oops' }), sku).productFacts!;
+  for (const key of ['specsList', 'specifications', 'descriptions', 'images', 'interchanges', 'applicationQualifiers'] as const) assert.equal(malformed.sections[key], 'malformed');
+  const partial = mapProduct(factsProduct({ specs_list: [{ name: 'Length', value: '2' }, { name: 'Width', value: {} }],
+    interchanges: { count: 2, items: [{ brand: 'A', part_number: '1', type: 'NR', notes: 'Do not substitute' }, null] } }), sku).productFacts!;
+  assert.equal(partial.sections.specsList, 'partial');
+  assert.equal(partial.sections.interchanges, 'partial');
+  assert.equal(partial.interchanges[0].notes, 'Do not substitute');
+});
+
+test('policy omissions stay partial, null is absent, fallback cannot conceal malformed ordered specs', () => {
+  const policy = mapProduct(factsProduct({ specs_list: [{ name: 'LIF', value: '2' }],
+    specifications: JSON.parse('{"__proto__":"private","constructor":"private","Color":"Black"}') }), sku);
+  assert.equal(policy.productFacts?.sections.specsList, 'partial');
+  assert.equal(policy.productFacts?.sections.specifications, 'partial');
+  assert.deepEqual(policy.specs, { Color: 'Black' });
+  assert.equal(Object.getPrototypeOf(policy.specs), Object.prototype);
+  const bad = mapProduct(factsProduct({ specs_list: false, specifications: { Color: 'Black' } }), sku);
+  assert.equal(bad.productFacts?.sections.specsList, 'malformed');
+  assert.deepEqual(bad.specs, { Color: 'Black' });
+  const absent = mapProduct(factsProduct({ specs_list: null, specifications: null, descriptions: null,
+    media: null, interchanges: null, fitment_qualifiers: null }), sku).productFacts!;
+  for (const state of Object.values(absent.sections)) assert.equal(state, 'absent');
+});
+
+test('NR cannot be cancelled by missing/conflicting type names, and reference identifiers are exact', () => {
+  const exact = 'AB+12 (R).5-2_' + 'x'.repeat(1100);
+  const mapped = mapProduct(factsProduct({ interchanges: { count: 4, items: [
+    { brand: 'A', part_number: exact, type: 'NR', notes: 'Do not substitute' },
+    { brand: 'B', part_number: 'X', type: 'NR', type_name: 'Recommended', notes: 'Different mounting' },
+    { brand: 'C', part_number: ' space padded ', type: 'OE' },
+    { brand: 'D', part_number: 'Y', notes: { unsafe: true } },
+  ] } }), sku);
+  assert.equal(mapped.productFacts?.interchangeCount, 4);
+  assert.equal(mapped.productFacts?.sections.interchanges, 'partial');
+  assert.equal(mapped.productFacts?.interchanges.length, 2);
+  assert.equal(mapped.interchanges?.[0].partNumber, exact);
+  assert.equal(mapped.interchanges?.[0].notes, 'NR · Not Recommended · Do not substitute');
+  assert.equal(mapped.productFacts?.interchanges[1].typeName, 'Recommended');
+  assert.equal(mapped.interchanges?.[1].notes, 'NR · Not Recommended · Recommended · Different mounting');
+});
+
+test('coded descriptions with identical text keep differing language/type provenance', () => {
+  const row = { code: 'EXT', type: 'Extended', text: 'Identical text', language: 'en' };
+  const mapped = mapProduct(factsProduct({ description_short: 'Identical text', description_language: 'fr',
+    description_long: 'Identical text', description_long_language: 'en',
+    descriptions: [row, row, { ...row, language: 'fr' }, { ...row, code: 'MKT', type: 'Marketing' }],
+  }), sku).productFacts!;
+  assert.equal(mapped.descriptions.length, 5);
+  assert.deepEqual(mapped.descriptions.map(row => [row.kind, row.language, row.type, row.code]), [
+    ['short', 'fr', undefined, undefined], ['long', 'en', undefined, undefined],
+    ['other', 'en', 'Extended', 'EXT'], ['other', 'fr', 'Extended', 'EXT'], ['other', 'en', 'Marketing', 'MKT'],
+  ]);
+});
+
+test('overlong asset URLs are rejected whole instead of projecting a truncated address', () => {
+  const mapped = mapProduct(factsProduct({ media: { images: ['https://cdn.example.test/' + 'x'.repeat(2100)],
+    videos: ['data:video/mp4;base64,eA==', 'https:cdn.example.test/movie', 'https:/cdn.example.test/movie'], documents: ['https://user:pass@cdn.example.test/doc'] } }), sku);
+  assert.equal(mapped.imageUrl, undefined);
+  assert.deepEqual(mapped.productFacts?.media, { images: [], videos: [], documents: [] });
+  assert.equal(mapped.productFacts?.sections.images, 'malformed');
+});
+
+test('malformed coded description metadata stays visible in section health despite good primary text', () => {
+  const primary = { description_short: 'Good summary', description_language: 'en' };
+  const badRows = [{ text: 'Bad code', code: {} }, { text: 'Bad type', type: 7 },
+    { text: 'Bad language', language: 'fr_?' }, { text: 'Bad null type', type: null }, { text: 'Blank code', code: ' ' }];
+  const malformed = mapProduct(factsProduct({ ...primary, descriptions: badRows }), sku);
+  assert.equal(malformed.descriptionText, 'Good summary');
+  assert.equal(malformed.productFacts?.sections.descriptions, 'malformed');
+  assert.deepEqual(malformed.productFacts?.descriptions, [{ kind: 'short', text: 'Good summary', language: 'en' }]);
+  const mixed = mapProduct(factsProduct({ ...primary, descriptions: [...badRows,
+    { code: 'EXT', type: 'Extended', text: 'Good extended text', language: 'fr-CA' }] }), sku);
+  assert.equal(mixed.productFacts?.sections.descriptions, 'partial');
+  assert.deepEqual(mixed.productFacts?.descriptions[1], { kind: 'other', text: 'Good extended text', code: 'EXT', type: 'Extended', language: 'fr-CA' });
+});
+
+test('missing reference brands do not erase exact identifiers or NR warnings; malformed brands remain partial', () => {
+  const mapped = mapProduct(factsProduct({ interchanges: { count: 3, items: [
+    { part_number: 'AB+12 (R)', brand: null, brand_id: null, type: 'NR', notes: 'Do not substitute' },
+    { part_number: 'OE-1', brand_id: 'B001', type: 'OE' },
+    { part_number: 'INVALID', brand: { name: 'Unsafe' }, type: 'NR' },
+  ] } }), sku);
+  assert.equal(mapped.productFacts?.sections.interchanges, 'partial');
+  assert.equal(mapped.productFacts?.interchangeCount, 3);
+  assert.deepEqual(mapped.productFacts?.interchanges, [
+    { partNumber: 'AB+12 (R)', brand: '', type: 'NR', notes: 'Do not substitute' },
+    { partNumber: 'OE-1', brand: '', brandId: 'B001', type: 'OE' },
+  ]);
+  assert.deepEqual(mapped.interchanges?.[0], { partNumber: 'AB+12 (R)', brand: '', notes: 'NR · Not Recommended · Do not substitute' });
+});
+
+test('richer facts cannot alter verified identity/current CAD price or pack/core/availability semantics', () => {
+  const base = { ...product().product, pricing: { sale_price: 25.12, msrp: 40, currency: 'CAD', basis: 'current' },
+    sellablePackQuantity: 2, core_charge: { amount: 9.5 }, purchasable: false };
+  const mapped = mapProduct({ product: { ...base, specs_list: [{ name: 'Price', value: 'Free' }],
+    specifications: { Stock: '10000' }, interchanges: { count: 0, items: [] } } }, sku);
+  assert.deepEqual([mapped.id, mapped.brand, mapped.partNumber, mapped.price, mapped.currency, mapped.packQuantity,
+    mapped.coreCharge, mapped.stock, mapped.availability, mapped.purchasable, mapped.warranty],
+  [sku, 'AGNA Brakes', 'ALD1212M', 25.12, 'CAD', 2, 9.5, 1, 'low_stock', false, '']);
+  assert.throws(() => mapProduct({ product: { ...base, sku: 'ABCD_OTHER' } }, sku));
+});
+
 test('fitment mapping preserves ranges and pagination without inventing an engine or full coverage', () => {
   const mapped = mapProductFitments({ sku, fitments: [
     { year_from: 2007, year_to: 2009, make: 'Toyota', model: 'Camry', submodel: 'LE', position: 'Rear' },
