@@ -30,20 +30,29 @@ export function VehicleSearchBar({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const requestVersion = useRef(0);
   const submittedQuery = useRef<string | null>(null);
+  const suggestionsAllowed = useRef(false);
   useEffect(() => { setQuery(appliedQuery); }, [appliedQuery, vehicleContext]);
 
+  const dismissSuggestions = () => {
+    // Let the current request settle, but require fresh intent before reopening.
+    suggestionsAllowed.current = false;
+    setIsOpen(false);
+    setHighlightedIndex(-1);
+    setIsLoading(false);
+    setError('');
+  };
+
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
+        dismissSuggestions();
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", handleClickOutside);
+    return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -59,7 +68,7 @@ export function VehicleSearchBar({
         return;
       }
 
-      setIsLoading(true);
+      setIsLoading(suggestionsAllowed.current);
       try {
         let searchResults: VehicleSearchResult[];
 
@@ -74,10 +83,15 @@ export function VehicleSearchBar({
 
         if (!active || requestId !== requestVersion.current) return;
         setResults(searchResults);
-        setIsOpen(searchResults.length > 0 && submittedQuery.current !== query.trim());
+        setIsOpen(suggestionsAllowed.current && searchResults.length > 0 && submittedQuery.current !== query.trim());
         setHighlightedIndex(-1);
       } catch (error) {
-        if (active && requestId === requestVersion.current) { setError((error as Error).message); setResults([]); setIsOpen(false); }
+        if (active && requestId === requestVersion.current) {
+          setError(suggestionsAllowed.current ? (error as Error).message : '');
+          setResults([]);
+          setIsOpen(false);
+          setHighlightedIndex(-1);
+        }
       } finally {
         if (active && requestId === requestVersion.current) setIsLoading(false);
       }
@@ -88,7 +102,8 @@ export function VehicleSearchBar({
 
   const handleSelect = (result: VehicleSearchResult) => {
     requestVersion.current++;
-    setIsLoading(false);
+    dismissSuggestions();
+    setResults([]);
     if (result.type === "vehicle") {
       onVehicleSelect(result);
     } else if (result.type === "part" && onPartSelect) {
@@ -98,7 +113,6 @@ export function VehicleSearchBar({
     }
     submittedQuery.current = null;
     setQuery("");
-    setIsOpen(false);
   };
 
   const submitSearch = () => {
@@ -106,17 +120,29 @@ export function VehicleSearchBar({
     if (!trimmed || !onTextSearch) return;
     submittedQuery.current = trimmed;
     requestVersion.current++;
+    dismissSuggestions();
     setResults([]);
-    setHighlightedIndex(-1);
-    setIsOpen(false);
-    setIsLoading(false);
-    setError('');
     onTextSearch(trimmed);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     const nativeEvent = e.nativeEvent as KeyboardEvent;
     if (nativeEvent.isComposing || nativeEvent.keyCode === 229) return;
+
+    if (e.key === "Escape" || e.key === "Tab") {
+      dismissSuggestions();
+      return;
+    }
+
+    if (!isOpen && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      suggestionsAllowed.current = true;
+      if (results.length > 0 && submittedQuery.current !== query.trim()) {
+        setIsOpen(true);
+        setHighlightedIndex(e.key === "ArrowDown" ? 0 : results.length - 1);
+      }
+      return;
+    }
 
     if (!isOpen) {
       if (e.key === "Enter" && query.trim() && onTextSearch) {
@@ -145,25 +171,22 @@ export function VehicleSearchBar({
           submitSearch();
         }
         break;
-      case "Escape":
-        setIsOpen(false);
-        break;
     }
   };
 
   const clearSearch = () => {
     submittedQuery.current = null;
     requestVersion.current++;
-    setIsLoading(false);
     setQuery("");
     setResults([]);
-    setIsOpen(false);
-    inputRef.current?.focus();
+    containerRef.current?.querySelector('input')?.focus();
+    dismissSuggestions();
     onTextSearch?.('');
   };
 
   return (
-    <div ref={containerRef} className={cn("relative text-brand-ink", className)}>
+    <div ref={containerRef} className={cn("relative text-brand-ink", className)}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) dismissSuggestions(); }}>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -173,9 +196,8 @@ export function VehicleSearchBar({
           aria-autocomplete="list"
           aria-expanded={isOpen}
           aria-controls="catalog-search-results"
-          aria-activedescendant={highlightedIndex >= 0 ? `catalog-result-${highlightedIndex}` : undefined}
+          aria-activedescendant={isOpen && results[highlightedIndex] ? `catalog-result-${highlightedIndex}` : undefined}
           maxLength={120}
-          ref={inputRef}
           type="text"
           value={query}
           placeholder={
@@ -184,9 +206,22 @@ export function VehicleSearchBar({
               : "Search by vehicle (2010 Hyundai Elantra) or part number..."
           }
           className="pl-10 pr-20 bg-white text-brand-ink border-0 shadow-sm"
-          onChange={(e) => { submittedQuery.current = null; setQuery(e.target.value); }}
+          onChange={(e) => {
+            requestVersion.current++;
+            submittedQuery.current = null;
+            suggestionsAllowed.current = true;
+            setResults([]);
+            setHighlightedIndex(-1);
+            setIsOpen(false);
+            setIsLoading(false);
+            setError('');
+            setQuery(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
-          onFocus={() => results.length > 0 && submittedQuery.current !== query.trim() && setIsOpen(true)}
+          onFocus={() => {
+            suggestionsAllowed.current = true;
+            if (results.length > 0 && submittedQuery.current !== query.trim()) setIsOpen(true);
+          }}
         />
         <Button
           type="button"
@@ -217,6 +252,8 @@ export function VehicleSearchBar({
           {results.length > 0 ? (
             results.map((result, index) => (
               <button
+                type="button"
+                tabIndex={-1}
                 role="option"
                 id={`catalog-result-${index}`}
                 aria-selected={highlightedIndex === index}
@@ -226,6 +263,7 @@ export function VehicleSearchBar({
                   highlightedIndex === index && "bg-gray-100"
                 )}
                 onClick={() => handleSelect(result)}
+                onPointerDown={(event) => { if (event.button === 0) event.preventDefault(); }}
                 onMouseEnter={() => setHighlightedIndex(index)}
               >
                 {result.type === "vehicle" ? (
