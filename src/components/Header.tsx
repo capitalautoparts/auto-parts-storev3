@@ -1,9 +1,8 @@
-import { toast } from "sonner";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Logo } from "./Logo";
 import { ShoppingCart, Menu, User, LogOut, Heart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { VehicleSearchBar } from "@/components/VehicleSearchBar";
@@ -39,13 +38,14 @@ export function Header({
   onAddToCart,
 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pendingMenuSearch = useRef(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [mobileWishlistOpen, setMobileWishlistOpen] = useState(false);
   const { user, isAuthenticated: signedIn, logout } = useAuth();
   const { items: wishlistItems, itemCount: wishlistItemCount, removeFromWishlist } = useWishlist();
 
   const isAuthenticated = !catalogPreview && signedIn;
-  const openAccount = () => catalogPreview ? toast.info("Accounts are not enabled during catalog testing.") : setAuthModalOpen(true);
+  const openAccount = () => setAuthModalOpen(true);
   const focusSearch = () => document.getElementById("catalog-search")?.focus();
 
   return (
@@ -53,13 +53,21 @@ export function Header({
       <div className="border-b border-black/20">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
           {/* Mobile menu button */}
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild className="lg:hidden">
-              <Button variant="ghost" size="icon" className="text-white hover:bg-black/20">
-                <Menu className="h-6 w-6" />
-              </Button>
+          <Sheet open={mobileMenuOpen} onOpenChange={open => {
+            if (open) pendingMenuSearch.current = false;
+            setMobileMenuOpen(open);
+          }}>
+            <SheetTrigger aria-label="Open menu" className={buttonVariants({ variant: "ghost", size: "icon", className: "lg:hidden text-white hover:bg-black/20" })}>
+              <Menu className="h-6 w-6" />
             </SheetTrigger>
-            <SheetContent side="left" className="w-72 bg-brand-navy text-white border-r-0">
+            <SheetContent side="left" className="w-72 bg-brand-navy text-white border-r-0"
+              onCloseAutoFocus={event => {
+                if (!pendingMenuSearch.current) return;
+                pendingMenuSearch.current = false;
+                // Override the trigger focus return only for Menu > Search.
+                event.preventDefault();
+                focusSearch();
+              }}>
               <SheetHeader>
                 <SheetTitle className="text-white">Menu</SheetTitle>
               </SheetHeader>
@@ -67,9 +75,10 @@ export function Header({
                 <button onClick={() => { onCatalogClick?.(); setMobileMenuOpen(false); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
                   Part Catalog
                 </button>
-                <button onClick={() => { setMobileMenuOpen(false); focusSearch(); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
-                  Part Number Search
+                <button onClick={() => { pendingMenuSearch.current = true; setMobileMenuOpen(false); }} className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
+                  Search catalog
                 </button>
+                {!catalogPreview && <>
                 <button className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
                   Tools
                 </button>
@@ -86,6 +95,7 @@ export function Header({
                 <button className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors">
                   Promotions
                 </button>
+                </>}
                 <button
                   className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors flex items-center gap-2"
                   onClick={() => {
@@ -118,6 +128,13 @@ export function Header({
                       Sign Out
                     </button>
                   </>
+                ) : catalogPreview ? (
+                  <div className="py-2 px-3">
+                    <button disabled aria-describedby="mobile-account-unavailable" className="text-left opacity-60 cursor-not-allowed">
+                      Account
+                    </button>
+                    <p id="mobile-account-unavailable" className="mt-1 text-xs text-white/70">Accounts are not enabled during catalog testing.</p>
+                  </div>
                 ) : (
                   <button
                     className="text-left py-2 px-3 hover:bg-black/20 rounded transition-colors"
@@ -138,9 +155,11 @@ export function Header({
           </div>
 
           <div className="hidden lg:flex items-center gap-5 text-[11px] uppercase tracking-[0.2em] text-white/80">
+            {!catalogPreview && <>
             <button className="hover:text-white hover:underline">Help</button>
             <button className="hover:text-white hover:underline">Order Status</button>
             <button className="hover:text-white hover:underline">Promotions</button>
+            </>}
             {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger className="flex items-center gap-1 hover:text-white hover:underline">
@@ -158,6 +177,11 @@ export function Header({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+            ) : catalogPreview ? (
+              <div>
+                <button disabled aria-describedby="desktop-account-unavailable" className="opacity-60 cursor-not-allowed">Account</button>
+                <p id="desktop-account-unavailable" className="mt-1 text-[10px] normal-case tracking-normal text-white/70">Accounts are not enabled during catalog testing.</p>
+              </div>
             ) : (
               <button className="hover:text-white hover:underline" onClick={openAccount}>
                 Account
@@ -192,8 +216,8 @@ export function Header({
           {/* Desktop nav buttons - hidden on mobile */}
           <div className="hidden lg:flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] font-semibold">
             <button onClick={onCatalogClick} className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Part Catalog</button>
-            <button onClick={focusSearch} className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Part Number Search</button>
-            <button className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Tools</button>
+            <button onClick={focusSearch} className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Search catalog</button>
+            {!catalogPreview && <button className="px-3 py-1 border border-white/40 rounded hover:bg-black/20 transition-colors">Tools</button>}
           </div>
 
           {/* Search bar - full width on mobile */}
@@ -210,14 +234,14 @@ export function Header({
           </div>
 
           {/* Desktop utility buttons - hidden on mobile */}
-          <div className="hidden lg:flex items-center gap-2">
+          {!catalogPreview && <div className="hidden lg:flex items-center gap-2">
             <Button type="button" variant="outline" className="border-white/40 text-white hover:bg-black/20 bg-transparent">
               VIN Lookup
             </Button>
             <Button type="button" variant="outline" className="border-white/40 text-white hover:bg-black/20 bg-transparent">
               Need Help?
             </Button>
-          </div>
+          </div>}
         </div>
       </div>
 
