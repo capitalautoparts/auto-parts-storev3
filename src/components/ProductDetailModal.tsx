@@ -27,22 +27,22 @@ interface ProductDetailModalProps {
 const tierConfig = {
   economy: {
     label: "Economy",
-    bgColor: "bg-sky-500",
-    textColor: "text-white",
+    bgColor: "bg-brand-sand",
+    textColor: "text-brand-ink",
   },
   daily_driver: {
     label: "Daily Driver",
-    bgColor: "bg-emerald-500",
+    bgColor: "bg-brand-charcoal",
     textColor: "text-white",
   },
   premium: {
     label: "Premium",
-    bgColor: "bg-amber-500",
+    bgColor: "bg-brand-accent",
     textColor: "text-white",
   },
   performance: {
     label: "Performance",
-    bgColor: "bg-rose-500",
+    bgColor: "bg-brand-ink",
     textColor: "text-white",
   },
 };
@@ -68,7 +68,7 @@ export function ProductDetailModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto p-0 bg-white shadow-2xl border-0">
         {/* Header bar */}
-        <div className="bg-[#a00a0a] text-white px-4 py-3">
+        <div className="bg-brand-charcoal text-white px-4 py-3">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3 text-white">
               <Package className="h-5 w-5" />
@@ -137,7 +137,7 @@ export function ProductDetailModal({
               <Button
                 onClick={handleAddToCart}
                 disabled={part.price === null || part.purchasable === false}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="bg-brand-accent hover:bg-brand-accent/90 text-white"
               >
                 <ShoppingCart className="h-4 w-4 mr-2" />
                 Add to Cart

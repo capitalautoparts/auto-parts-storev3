@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
@@ -14,6 +14,7 @@
   --color-brand-cream: var(--brand-cream);
   --color-brand-gold: var(--brand-gold);
   --color-brand-sand: var(--brand-sand);
+  --color-brand-accent: var(--brand-accent);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -50,25 +51,26 @@
 
 :root {
   --font-sans: "IBM Plex Sans", sans-serif;
-  --font-display: "Barlow Condensed", sans-serif;
-  --brand-navy: #c40c0c;
-  --brand-charcoal: #2d3436;
-  --brand-ink: #1f1f1f;
+  --font-display: "Outfit", sans-serif;
+  --brand-navy: #1f2326;
+  --brand-charcoal: #2e3438;
+  --brand-ink: #1f2326;
   --brand-cream: #ffffff;
-  --brand-gold: #f2f2f2;
-  --brand-sand: #e6e6e6;
-  --primary: 0 88% 41%;
-  --primary-foreground: 20 100% 98%;
-  --sidebar-primary: 0 88% 41%;
-  --sidebar-primary-foreground: 20 100% 98%;
+  --brand-gold: #f3efe6;
+  --brand-sand: #e4dfd2;
+  --brand-accent: #6e1f2b;
+  --primary: #6e1f2b;
+  --primary-foreground: #f6f3ec;
+  --sidebar-primary: #6e1f2b;
+  --sidebar-primary-foreground: #f6f3ec;
   --chart-1: 0 88% 41%;
   --chart-2: 15 78% 65%;
   --chart-3: 142 46% 40%;
   --chart-4: 210 55% 45%;
   --chart-5: 272 45% 48%;
   --radius: 0.65rem;
-  --background: 0 0% 100%;
-  --foreground: 0 0% 12%;
+  --background: #f3efe6;
+  --foreground: #1f2326;
   --card: 0 0% 100%;
   --card-foreground: 0 0% 12%;
   --popover: 0 0% 100%;
@@ -77,13 +79,13 @@
   --secondary-foreground: 0 0% 15%;
   --muted: 0 0% 95%;
   --muted-foreground: 0 0% 40%;
-  --accent: 0 75% 95%;
-  --accent-foreground: 0 35% 18%;
+  --accent: #efe3e5;
+  --accent-foreground: #3b141b;
   --destructive: 0 88% 41%;
   --destructive-foreground: 0 0% 98%;
   --border: 0 0% 85%;
   --input: 0 0% 85%;
-  --ring: 0 88% 41%;
+  --ring: #6e1f2b;
   --sidebar: 0 0% 100%;
   --sidebar-foreground: 0 0% 12%;
   --sidebar-accent: 0 0% 95%;

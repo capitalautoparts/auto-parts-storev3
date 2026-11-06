@@ -31,7 +31,7 @@ export function ProductRoute({ onAddToCart }: { onAddToCart: (id: string | numbe
       if (!canonical) { canonical = document.createElement('link'); canonical.rel = 'canonical'; document.head.append(canonical); }
       canonical.href = meta.canonical;
     } else {
-      document.title = isProduct ? 'Product details | Roy’s Auto' : 'Roy’s Auto | Catalog preview';
+      document.title = isProduct ? 'Product details | Roy’s Auto' : 'roy’s auto';
       if (description) description.content = 'Roy’s Auto — auto parts catalog exploration for Canada.';
       canonical?.remove();
     }
