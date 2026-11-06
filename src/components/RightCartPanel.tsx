@@ -219,7 +219,7 @@ export function RightCartPanel({
             <>
               {/* Shipping Address */}
               <div className="border border-border rounded-md overflow-hidden">
-                <div className="px-3 py-2 bg-[#a00a0a] text-white text-[11px] uppercase tracking-[0.2em] font-semibold">
+                <div className="px-3 py-2 bg-brand-charcoal text-white text-[11px] uppercase tracking-[0.2em] font-semibold">
                   Shipping Address
                 </div>
                 <div className="p-3 space-y-3 bg-white">
@@ -312,7 +312,7 @@ export function RightCartPanel({
 
               {/* Billing Address */}
               <div className="border border-border rounded-md overflow-hidden">
-                <div className="px-3 py-2 bg-[#a00a0a] text-white text-[11px] uppercase tracking-[0.2em] font-semibold">
+                <div className="px-3 py-2 bg-brand-charcoal text-white text-[11px] uppercase tracking-[0.2em] font-semibold">
                   Billing Address
                 </div>
                 <div className="p-3 space-y-3 bg-white">
@@ -387,7 +387,7 @@ export function RightCartPanel({
               {/* Shipping Options */}
               {shippingCalculated && !catalogPreview && (
                 <div className="border border-border rounded-md overflow-hidden">
-                  <div className="px-3 py-2 bg-[#a00a0a] text-white text-[11px] uppercase tracking-[0.2em] font-semibold flex items-center gap-2">
+                  <div className="px-3 py-2 bg-brand-charcoal text-white text-[11px] uppercase tracking-[0.2em] font-semibold flex items-center gap-2">
                     <Truck className="h-4 w-4" />
                     Shipping Options
                   </div>
@@ -428,7 +428,7 @@ export function RightCartPanel({
 
               {/* Payment */}
               <div className="border border-border rounded-md overflow-hidden">
-                <div className="px-3 py-2 bg-[#a00a0a] text-white text-[11px] uppercase tracking-[0.2em] font-semibold flex items-center gap-2">
+                <div className="px-3 py-2 bg-brand-charcoal text-white text-[11px] uppercase tracking-[0.2em] font-semibold flex items-center gap-2">
                   <CreditCard className="h-4 w-4" />
                   Payment
                 </div>
@@ -518,7 +518,7 @@ export function RightCartPanel({
         <Button
           onClick={handlePlaceOrder}
           disabled={catalogPreview || items.length === 0 || !shippingCalculated || processingOrder}
-          className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+          className="w-full bg-brand-accent text-white hover:bg-brand-accent/90"
           size="lg"
         >
           {processingOrder ? (

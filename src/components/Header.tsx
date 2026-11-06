@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { useState } from "react";
+import { Logo } from "./Logo";
 import { ShoppingCart, Menu, User, LogOut, Heart } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -133,14 +134,7 @@ export function Header({
           </Sheet>
 
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-white text-brand-navy flex items-center justify-center font-display text-sm tracking-[0.2em] font-bold">
-              CAP
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="text-2xl font-display uppercase tracking-[0.08em]">
-                Capital Auto Parts
-              </h1>
-            </div>
+            <Logo className="h-7 sm:h-8 w-auto text-white" />
           </div>
 
           <div className="hidden lg:flex items-center gap-5 text-[11px] uppercase tracking-[0.2em] text-white/80">
@@ -193,7 +187,7 @@ export function Header({
         </div>
       </div>
 
-      <div className="bg-[#a00a0a] text-white border-b border-black/20">
+      <div className="bg-brand-charcoal text-white border-b border-black/20">
         <div className="container mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {/* Desktop nav buttons - hidden on mobile */}
           <div className="hidden lg:flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] font-semibold">
