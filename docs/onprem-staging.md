@@ -6,10 +6,12 @@ catalog-connected test site runs on our staging VM (VM 459 `roysauto-staging`, p
 
 ## Architecture
 
-- Browser -> nginx on VM 459 (serves `dist/`, proxies `/api/catalog` and `/healthz` to the Node process).
+- Browser -> nginx on VM 459 (serves `dist/`, proxies `/products/`, `/api/catalog` and `/healthz` to the Node process).
 - `server/onprem.ts` (node:http) serves `GET /api/catalog` via `createCatalogHandler()` and `GET /healthz`.
-  Unknown paths return 404 for any method; `/api/catalog` and `/healthz` return 405 for non-GET.
-  It does not serve static files.
+  Product documents under `/products/<ERP SKU>` use the same gated read path and
+  `dist/index.html`, resolved relative to the server module in the deployed release.
+  Unknown paths return 404 for any method; `/api/catalog`, `/healthz` and product
+  documents return 405 for non-GET. It does not serve static files.
 - Upstream: the single fixed `http://192.168.88.233/api/erp` (VM 453 nginx; plain HTTP, no Host header,
   no credentials). Selected only by `ROYS_ONPREM=1`; no fallback, retry to another route, or env-supplied URL.
 - Same `/api/erp` gateway contract as before; transport change only. User-Agent, `redirect: 'error'`,
@@ -81,11 +83,11 @@ The first failing validation wins; fixing one field may expose another error.
 | `error` message | Cause | First thing to check |
 | --- | --- | --- |
 | `Unsupported catalog request URL.` (or a URL-parser error) | The URL cannot be parsed, lacks a single leading `/`, changes origin, has a path other than `/` or `/api/catalog`, or has a fragment. | Inspect the raw request target. Use `/api/catalog?resource=...`; the on-prem router only forwards the exact `/api/catalog` path (see below). |
-| `Unknown catalog resource.` | `resource` is missing or is not an own entry in the route allowlist. | Use exactly one of `years`, `makes`, `models`, `engines`, `categories`, `category`, `search`. |
+| `Unknown catalog resource.` | `resource` is missing or is not an own entry in the route allowlist. | Use exactly one of `years`, `makes`, `models`, `engines`, `categories`, `category`, `search`, `product`, `product-fitments`. |
 | `Unsupported catalog parameter.` | A key is repeated (including `resource`), or is not allowed for the chosen resource. | Inspect all query keys and remove duplicates or keys outside that resource's allowlist. |
-| `Invalid catalog parameter.` | A decoded value is empty/whitespace-only, exceeds 120 characters, or contains U+0000–U+001F. | Inspect decoded values and their lengths, not just the URL-encoded text. |
+| `Invalid catalog parameter.` | A decoded value is empty/whitespace-only, exceeds 120 characters (160 for `sku`), or contains U+0000–U+001F. | Inspect decoded values and their lengths, not just the URL-encoded text. |
 | `Invalid numeric parameter.` | `year`, `page`, `limit`, `part_type`, or an allowed `*_id` does not match `^[1-9]\d{0,8}$`. | Check for zero, leading zeroes, signs, decimals, whitespace or more than nine digits. |
-| `Missing year.`, `Missing make.`, `Missing model.`, `Missing slug.` | A required key is absent: makes needs year; models needs year/make; engines needs year/make/model; category needs slug. | Check the required keys for that resource. A present but empty value fails the earlier value check instead. |
+| `Missing year.`, `Missing make.`, `Missing model.`, `Missing slug.`, `Missing sku.` | A required key is absent: makes needs year; models needs year/make; engines needs year/make/model; category needs slug; product/product-fitments need sku. | Check the required keys for that resource. A present but empty value fails the earlier value check instead. |
 | `Invalid year.` | A numeric year is outside 1900–2100. | Check the year range. |
 | `Page limit exceeded.` | `page` is greater than 100. | Check the requested page. |
 | `Page size exceeded.` | `limit` is greater than 24. | Check the requested page size. |
@@ -120,11 +122,34 @@ alternate-route retry.
 `GET /healthz` returns `{"status":"ok"}` without calling the catalog handler or checking activation
 or upstream connectivity. A healthy response therefore does not prove that catalog reads work.
 Non-GET `/healthz` returns 405 with `Method not allowed.` and `Allow: GET`.
-Only the exact `/api/catalog` path (optionally with a query) reaches the proxy; `/`, `/api/catalog/`
-and all other paths return 404 with `Not found.`, regardless of method. Check nginx's forwarded path
+Only the exact `/api/catalog` path (optionally with a query) reaches the catalog proxy.
+Product documents under `/products/` reach the product HTML handler, which validates the raw
+path and SKU before reading ERP. Other paths, including `/` and `/api/catalog/`, return 404
+with `Not found.`, regardless of method. Check nginx's forwarded path
 first if a catalog request returns that 404. An nginx-generated error is outside the proxy mappings above.
 
 If the Node listener is unavailable, check its startup error and configured loopback address/port:
 `resolveListenOptions` accepts only `127.0.0.1`, `::1` or `localhost` (default `127.0.0.1`), and a
 one-to-five-digit `PORT` in 1–65535 (default `3200`). Invalid values throw before a usable listener
 is configured; they are not catalog JSON 503 responses.
+
+
+### Product reads and HTML diagnostics
+
+`product` reads `/api/v1/products/<SKU>`; `product-fitments` reads its `/fitments`
+subresource, with the existing 24-row/100-page limits. Both require the validated
+brand-qualified ERP SKU; unsupported IDs return 400 before any upstream read.
+A missing product returns 404 `Product not found.` rather than a generic 502.
+See [permanent product links](product-links.md) for the identity/price/fitment contract.
+
+Upstream 403 responses or `cf-mitigated: challenge` (including HTTP 200) return
+`CATALOG_UPSTREAM_REFUSED`; a nonempty `cf-ray` is retained as `reference`.
+Product HTML exposes `X-Roys-Catalog-Refused: 1` and a validated non-secret
+`X-Roys-Catalog-Reference` when available, so read-only browser checks can stop
+that requesting context without retrying. Existing activation, fixed-upstream,
+stub-rejection and redirect protections apply. Product HTML stays noindex.
+
+The existing nginx source forwards `/products/` to the loopback Node process.
+Installing/reloading that reviewed location and hosted product acceptance belong
+to infra after approved merge; candidate VM511 screenshots and the packaged
+`server/` + `dist/` + `package.json` proof are recorded in `product-links.md`.

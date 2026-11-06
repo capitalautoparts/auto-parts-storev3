@@ -1,5 +1,7 @@
 import { createCatalogHandler } from './catalog-proxy.ts';
 import { createOnPremServer, resolveListenOptions } from './onprem-server.ts';
+import { createProductPageHandler } from './product-page.ts';
+import { readFile } from 'node:fs/promises';
 
 function fail(message: string): never {
   console.error(`Refusing to start: ${message}`);
@@ -12,7 +14,8 @@ let options: { host: string; port: number };
 try { options = resolveListenOptions(process.env); }
 catch (error) { fail((error as Error).message); }
 
-const server = createOnPremServer(createCatalogHandler(fetch, process.env));
+const server = createOnPremServer(createCatalogHandler(fetch, process.env),
+  createProductPageHandler(() => readFile(new URL('../dist/index.html', import.meta.url), 'utf8')));
 server.on('error', error => {
   console.error(`On-prem API failed to listen on ${options.host}:${options.port}: ${(error as NodeJS.ErrnoException).code ?? error.message}`);
   process.exit(1);

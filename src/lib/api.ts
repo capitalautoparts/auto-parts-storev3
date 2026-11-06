@@ -36,6 +36,7 @@ export interface PartInterchange {
 
 export interface PartFitment {
   year: number;
+  yearEnd?: number;
   make: string;
   model: string;
   engine?: string;
@@ -53,6 +54,8 @@ export interface Part {
   brand: string;
   partNumber: string;
   description: string;
+  descriptionText?: string;
+  purchasable?: boolean;
   price: number | null;
   tier?: 'economy' | 'daily_driver' | 'premium' | 'performance';
   warranty: string;

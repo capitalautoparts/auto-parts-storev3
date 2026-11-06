@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { createCatalogHandler } from './catalog-proxy.ts';
+import type { createProductPageHandler } from './product-page.ts';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
@@ -12,7 +13,7 @@ export function resolveListenOptions(env: NodeJS.ProcessEnv): { host: string; po
   return { host, port };
 }
 
-export function createOnPremServer(handler: ReturnType<typeof createCatalogHandler>) {
+export function createOnPremServer(handler: ReturnType<typeof createCatalogHandler>, products?: ReturnType<typeof createProductPageHandler>) {
   const server = createServer({ maxHeaderSize: 8192, headersTimeout: 10_000, requestTimeout: 20_000 }, (req, res) => {
     const path = (req.url ?? '').split('?')[0];
     if (path === '/healthz') {
@@ -23,6 +24,7 @@ export function createOnPremServer(handler: ReturnType<typeof createCatalogHandl
       return res.end('{"status":"ok"}');
     }
     if (path === '/api/catalog') return void handler(req, res);
+    if (path.startsWith('/products/') && products) return void products(req, res);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.statusCode = 404;
     res.end('{"error":"Not found."}');
