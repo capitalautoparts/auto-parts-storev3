@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readCatalog } from './catalog-proxy.ts';
-import { mapProduct, productMeta, productSku } from './product-data.ts';
+import { mapProduct, productMeta, productSchema, productSku } from './product-data.ts';
 
 export const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -37,15 +37,17 @@ export function createProductPageHandler(
           head = `<link rel="canonical" href="${escapeHtml(meta.canonical)}" />`;
           // No upstream SEO HTML or schema is trusted; no offers/price metadata
           // is emitted until an integrated price contract has been accepted.
-          const schema = { '@context': 'https://schema.org', '@type': 'Product', sku,
-            name: part.description, mpn: part.partNumber, brand: { '@type': 'Brand', name: part.brand }, description };
-          head += `<script type="application/ld+json" id="product-schema">${JSON.stringify(schema).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026')}</script>`;
+          head += `<script type="application/ld+json" id="product-schema">${productSchema(part)}</script>`;
           article = `<h1>${escapeHtml(part.description)}</h1><p>${escapeHtml(part.brand)} ${escapeHtml(part.partNumber)}</p><p>ERP SKU: ${escapeHtml(sku)}</p><p>${escapeHtml(part.descriptionText || description)}</p>`;
         } catch { status = 502; }
       }
       if (status !== 200) {
         title = status === 404 ? 'Product not found' : 'Product temporarily unavailable';
-        const body = result.body as { reference?: unknown } | null;
+        const body = result.body as { reference?: unknown; code?: unknown } | null;
+        if (body?.code === 'CATALOG_UPSTREAM_REFUSED') res.setHeader('X-Roys-Catalog-Refused', '1');
+        if (typeof body?.reference === 'string' && /^[A-Za-z0-9._:-]{1,160}$/.test(body.reference)) {
+          res.setHeader('X-Roys-Catalog-Reference', body.reference);
+        }
         description = status === 404 ? 'No product was found for this ERP SKU.' : 'The staging product could not be loaded. Please try again later.';
         if (typeof body?.reference === 'string') description += ` Reference: ${body.reference}`;
       }

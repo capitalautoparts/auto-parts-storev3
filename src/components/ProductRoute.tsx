@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { partsApi, type Part } from '@/lib/api';
 import { useQuery } from '@/lib/hooks';
 import { closeProduct } from '@/features/catalog/product-navigation';
+import { syncProductSchema } from '@/features/catalog/product-metadata';
 import { productMeta, productSku } from '../../server/product-data.ts';
 
 export function ProductRoute({ onAddToCart }: { onAddToCart: (id: string | number, part?: Part) => void }) {
@@ -20,7 +21,7 @@ export function ProductRoute({ onAddToCart }: { onAddToCart: (id: string | numbe
   const fitments = useQuery(() => partsApi.getFitments(sku!, fitmentPage), { enabled: !!sku && !!product.data, deps: [sku, !!product.data, fitmentPage] });
   useEffect(() => {
     document.getElementById('product-document')?.remove();
-    document.getElementById('product-schema')?.remove();
+    syncProductSchema(document, product.data, product.isLoading && sku ? sku : undefined);
     const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
     let canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
     if (product.data) {
@@ -34,7 +35,7 @@ export function ProductRoute({ onAddToCart }: { onAddToCart: (id: string | numbe
       if (description) description.content = 'Roy’s Auto — auto parts catalog exploration for Canada.';
       canonical?.remove();
     }
-  }, [product.data, isProduct]);
+  }, [product.data, product.isLoading, sku, isProduct]);
   if (!isProduct) return null;
   if (!product.data) return <Dialog open onOpenChange={open => { if (!open) closeProduct(); }}>
     <DialogContent className="bg-white max-w-2xl">

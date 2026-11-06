@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { readCatalog, upstreamUrl } from '../server/catalog-proxy.ts';
-import { mapProduct, mapProductFitments, productMeta, productPath, productSku } from '../server/product-data.ts';
+import { mapProduct, mapProductFitments, productMeta, productPath, productSchema, productSku } from '../server/product-data.ts';
 import { createProductPageHandler } from '../server/product-page.ts';
 import { closeProduct, followProduct } from '../src/features/catalog/product-navigation.ts';
 import type { MouseEvent } from 'react';
@@ -123,6 +123,7 @@ test('product HTML is crawlable without JavaScript, escaped, noindex and omits u
     assert.doesNotMatch(html, /<script>alert|evil\.test|"offers"|"price"/);
     const schema = html.match(/id="product-schema">([^]*?)<\/script>/)?.[1]; assert.ok(schema);
     assert.equal(JSON.parse(schema).name, hostile);
+    assert.equal(schema, productSchema(mapProduct({ product: { ...product().product, name: hostile, description_long: hostile } }, sku)));
   });
 });
 
@@ -142,6 +143,20 @@ test('HTML status distinguishes malformed, missing, blocked and unavailable prod
   await withPage(async () => Response.json({}, { status: 403, headers: { 'cf-ray': 'test-ray' } }), async origin => {
     const response = await fetch(`${origin}/products/${sku}`);
     assert.equal(response.status, 502); assert.match(await response.text(), /test-ray/);
+    assert.equal(response.headers.get('x-roys-catalog-refused'), '1');
+    assert.equal(response.headers.get('x-roys-catalog-reference'), 'test-ray');
+  });
+  await withPage(async () => Response.json({}, { status: 403 }), async origin => {
+    const response = await fetch(`${origin}/products/${sku}`);
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get('x-roys-catalog-refused'), '1');
+    assert.equal(response.headers.get('x-roys-catalog-reference'), null);
+  });
+  await withPage(async () => new Response('Challenge', { headers: { 'cf-mitigated': 'challenge', 'cf-ray': 'challenge-ray' } }), async origin => {
+    const response = await fetch(`${origin}/products/${sku}`);
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get('x-roys-catalog-refused'), '1');
+    assert.equal(response.headers.get('x-roys-catalog-reference'), 'challenge-ray');
   });
   await withPage(async () => Response.json({ product: { ...product().product, sku: 'ABCD_OTHER' } }), async origin => {
     const response = await fetch(`${origin}/products/${sku}`);

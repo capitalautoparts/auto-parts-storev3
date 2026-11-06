@@ -60,6 +60,18 @@ No JavaScript is required to read the name, part number, ERP SKU or description.
 The browser takes over the existing product dialog after mounting. Upstream SEO
 HTML, canonical domains and prebuilt schema are not trusted or copied.
 
+HTTP HTML and browser navigation use the same escaped identity-only schema
+builder. JavaScript retains the matching server schema during direct-entry
+loading, updates one node from the verified product, and removes stale identity
+on catalog/error navigation. The smoke checks schema state through Back/Forward.
+
+Product HTML exposes non-secret `X-Roys-Catalog-Refused: 1` and a validated
+`X-Roys-Catalog-Reference` for upstream refusals/challenges. The shared smoke
+monitor observes these document responses as well as catalog JSON and raw
+Cloudflare 403/challenge responses. It latches the first failure, closes the
+requesting page's context (desktop, mobile or crawler), and guards subsequent
+journeys against continuing or retrying that route.
+
 Staging remains `noindex, nofollow` in both HTML and HTTP headers. Missing
 products return HTTP 404, invalid SKU paths 400, activation failures 503 and
 unavailable/mismatched ERP data 502. Canonicals omit query parameters; no public
@@ -120,6 +132,13 @@ Evidence ledger (2026-11-06 10:58 EST):
 safety, fitment ranges and pagination, missing products, fail-closed activation,
 stub rejection, hostile metadata escaping, no-JavaScript response identity and
 noindex. It runs in the existing Node test command on VM511/CI.
+
+`node --experimental-strip-types scripts/product-links-faults.mjs` is a separate
+VM511 Firefox contract check using isolated fixtures only. It covers JS direct
+entry, SKU changes, Back/Forward and error schema state, plus mobile/crawler/API
+refusals, HTTP 200 challenge headers and missing-Ray cases. It checks the correct
+context closes and subsequent journeys/retries never execute. It makes no ERP
+requests and creates no screenshots; its success is not real-staging acceptance.
 
 After dependencies/glue are integrated, on VM511 only:
 

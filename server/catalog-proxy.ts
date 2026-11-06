@@ -108,15 +108,17 @@ export async function readCatalog(input: string, fetcher: typeof fetch = fetch, 
       await response.body?.cancel();
       return send(502, { error: 'The staging catalog is temporarily unavailable.' });
     }
-    if (!response.ok) {
+    const refused = response.status === 403 || response.headers.get('cf-mitigated') === 'challenge';
+    if (!response.ok || refused) {
       const rayId = response.headers.get('cf-ray');
       await response.body?.cancel();
       const missingProduct = response.status === 404 && ['product', 'product-fitments'].includes(new URL(input, 'http://catalog.local').searchParams.get('resource') ?? '');
       return send(missingProduct ? 404 : response.status === 429 ? 429 : 502, {
-        error: missingProduct ? 'Product not found.' : response.status === 403
+        error: missingProduct ? 'Product not found.' : refused
           ? 'Staging refused the catalog request. Share this reference with support.'
           : 'The staging catalog is temporarily unavailable.',
-        ...(response.status === 403 && rayId ? { reference: rayId } : {}),
+        ...(refused && rayId ? { reference: rayId } : {}),
+        ...(refused ? { code: 'CATALOG_UPSTREAM_REFUSED' } : {}),
       });
     }
     if (!response.headers.get('content-type')?.includes('application/json') || !response.body) throw new Error('Invalid response');

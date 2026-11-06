@@ -97,3 +97,12 @@ export function productMeta(part: Part) {
     canonical: productPath(String(part.id)),
   };
 }
+
+// The same identity-only payload is used in HTTP HTML and live browser state.
+// Escaping keeps JSON safe inside a script element; no offers/prices are copied.
+export function productSchema(part: Part): string {
+  const meta = productMeta(part);
+  return JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', sku: String(part.id),
+    name: part.description, mpn: part.partNumber, brand: { '@type': 'Brand', name: part.brand }, description: meta.description,
+  }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+}
