@@ -49,12 +49,47 @@ export interface PartAsset {
   url: string;
 }
 
+/** Detail-only facts. Listing snapshots need not contain these sections. */
+export type ProductSectionState = 'absent' | 'empty' | 'available' | 'partial' | 'malformed';
+export interface ProductSpec { name: string; value: string; unit?: string }
+export interface ProductDescription {
+  kind: 'short' | 'long' | 'other';
+  text: string;
+  language?: string;
+  type?: string;
+  code?: string;
+}
+export interface ProductReference extends PartInterchange {
+  /** Empty string means the source supplied no brand label; never inferred. */
+  brand: string;
+  brandId?: string;
+  type?: string;
+  typeName?: string;
+}
+export interface ProductFacts {
+  specsList: ProductSpec[];
+  descriptions: ProductDescription[];
+  /** Only the website-filtered public media response; no raw asset access. */
+  media: { images: string[]; videos: string[]; documents: string[] };
+  /** Supplied cross-references, never a replacement/fitment guarantee. */
+  interchanges: ProductReference[];
+  /** Supplied total before display filtering; null when absent or invalid. */
+  interchangeCount: number | null;
+  applicationQualifiers: { name: string; value: string }[];
+  /** Per-source health, independent of fallback: absent includes null/missing;
+   * empty requires an explicit empty container; partial records policy omission,
+   * invalid rows among usable rows, or count mismatch; malformed means no usable
+   * structurally valid rows/container. Policy-only omissions are partial. */
+  sections: Record<'specsList' | 'specifications' | 'descriptions' | 'images' | 'videos' | 'documents' | 'interchanges' | 'applicationQualifiers', ProductSectionState>;
+}
+
 export interface Part {
   id: string | number;
   brand: string;
   partNumber: string;
   description: string;
   descriptionText?: string;
+  productFacts?: ProductFacts;
   purchasable?: boolean;
   price: number | null;
   tier?: 'economy' | 'daily_driver' | 'premium' | 'performance';
