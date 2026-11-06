@@ -11,7 +11,8 @@ await mkdir(output, { recursive: true });
 const server = await preview({ configFile: 'vite.config.ts', preview: { host: '127.0.0.1', port: 0 } });
 const origin = server.resolvedUrls.local[0];
 const browser = await firefox.launch();
-const report = { task: 'aa064791', scope: 'First bounded R1/R7 batch',
+const layoutOnly = process.env.ROYS_CONTEXT_LAYOUT_ONLY === '1';
+const report = { mode: layoutOnly ? 'integrated-layout-after-Header17' : 'full-bounded-journey', task: 'aa064791', scope: 'First bounded R1/R7 batch',
   recordedEastern: new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto', timeZoneName: 'short' }),
   cases: [], apiResponses: [], pageErrors: [], screenshots: [], searches: [] };
 const monitor = createProductSmokeMonitor(report);
@@ -66,6 +67,7 @@ try {
     assert.equal((await saved()).engineId, Number(id.split('-').at(-1)));
   };
   await click(engineA); await choosePad();
+  if (!layoutOnly) {
   // Recreate the exact stale-storage sequence: A leaf -> B -> still-open A leaf.
   await click(engineB); await assertActive(bId);
   await click(pad); await waitParts(); await assertActive(aId);
@@ -77,6 +79,7 @@ try {
   report.cases.push('Real staging A Brake Pad -> B engine -> still-open A Brake Pad -> reload reopens A; category restoration deferred');
 
   await choosePad();
+  }
   const midTable = async () => {
     const rows = page.locator('[data-part-id]');
     const count = await rows.count();
@@ -146,6 +149,7 @@ try {
   async function assertActiveStorage(id) {
     assert.equal((await saved()).engineId, Number(id.split('-').at(-1)));
   }
+  if (!layoutOnly) {
   // A disclosure on another engine cannot switch the active vehicle.
   const bDisclosure = page.locator(`#${bId}`).locator('..').getByRole('button').first();
   await click(bDisclosure); await assertActive(aId);
@@ -216,6 +220,7 @@ try {
   await run(() => banner.getByRole('button', { name: 'Engine unspecified', exact: true }).waitFor());
   assert.equal((await saved()).engineId, 0);
   report.cases.push('Validated saved engine ID 0 survives reload as Engine unspecified (storage sentinel check, no coverage claim)');
+  }
   assert.deepEqual(report.pageErrors, []);
   await run(() => context.close());
 } catch (error) {

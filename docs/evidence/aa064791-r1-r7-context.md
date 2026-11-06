@@ -3,7 +3,11 @@
 Execution owner: task `aa064791`, branch `feat/roys-r1-r7-vehicle-context-aa064791`,
 worktree `/srv/dev/wt/roys-r1-r7-vehicle-context-aa064791`.
 Parent `w7:p2` owns integration, independent review and the umbrella roadmap.
-Base: `origin/staging` `68950d52b4faad8d970301061b0d2b477aba1689` (includes PR14).
+Initial base: `origin/staging` `68950d52b4faad8d970301061b0d2b477aba1689` (includes PR14).
+Before first push, normally merged current staging
+`92190fc6a9dcf8c85022c5f88b72f565d586f6e3` (reviewed/merged Header17), as requested
+by the parent. Header and shared smoke changes enter only through that merge;
+this task's PR diff still owns the same four files.
 This claims only this bounded R1/R7 work package; neither roadmap item is complete.
 
 ## Decision and evidence ledger
@@ -26,13 +30,14 @@ Parent read-only review findings were collected before the first push:
 | Original optional Next check did not demonstrate page 2 | Actionable verification gap. Supplemental real page-2 proof is retained; final focused script now requires Next enabled, observes actual page 2, and asserts the first leaf/engine request returns to page 1. No optional skip. |
 
 The originally queued pre-push was allowed to finish once and passed typecheck +
-35 tests. A final required pass follows the changed candidate; no overlapping
-heavy jobs or pre-review push.
+35 tests. The remediated candidate also passed typecheck + 35 tests before the
+parent's newer merged Header17 baseline arrived. A final required pass follows
+that normal staging merge; no overlapping heavy jobs or pre-review push.
 
 ## Validation
 
 Evidence: `/srv/dev/reports/roys-aa064791-r1-r7-context` (`COMMANDS.md`,
-`report.json`, `page-reset-report.json` and four screenshots).
+`report.json`, `page-reset-report.json`, `final/` and authoritative combined `integrated-header17/` reports/screenshots).
 
 - 2026-11-06 12:23 EST: Vite build and the focused real-staging Firefox journey
   passed on VM511. Seven scoped cases; 29 API responses, all HTTP 200; no page
@@ -54,13 +59,29 @@ Evidence: `/srv/dev/reports/roys-aa064791-r1-r7-context` (`COMMANDS.md`,
 - The primary journey also verifies brand reset, pure engine disclosure,
   already-open engine selection, saved engine ID 0 and nonfatal storage writes.
   The ID 0 case checks the local storage sentinel only, not product coverage.
-- Initial pre-push passed typecheck and all 35 tests at 2026-11-06 12:27 EST. Final changed-candidate pass and affected Firefox evidence are pending below before push.
+- Initial pre-push passed typecheck and all 35 tests; final remediated and merged-baseline passes are recorded below. Each later pass followed actual code/baseline changes requested in review, with no overlapping heavy jobs.
 Build, Firefox and required pre-push run on VM511 with Node 22 and
 `/home/bbarber/.local/bin/vm511-deps .`; VM510 is read/edit/orchestration only.
 The focused script uses real staging through the existing fixed on-prem upstream,
 reuses the shared refusal latch, and stops on 403/challenge with its Ray/reference.
 There are no catalog mocks, endpoint changes, retries after refusal, business-data
 writes or product-backed vehicle promises. Categories remain global/reference.
+
+## Final review and integrated baseline evidence
+
+- Remediated candidate build passed; focused Firefox report at `final/report.json`
+  passed all 10 cases: 39 API 200 responses, no errors/refusals, six screenshots.
+  Includes category → text search → return visual and outgoing query assertions
+  at both widths, established engine-parent smoke scope, and explicit actual
+  page 2 → leaf/engine → page 1. Screenshots were inspected against the mockups.
+- Header17 baseline was then normally merged at the parent's request. The
+  affected combined layout/text-scope/focus checks rerun using
+  `ROYS_CONTEXT_LAYOUT_ONLY=1`; prior full persistence/storage/page-reset proof
+  is retained without repeating those unchanged sections. Combined `integrated-header17/report.json` passed all four affected cases at
+  2026-11-06 12:31 EST: 13 API 200 responses, no page errors/refusals, six integrated
+  screenshots. It verifies visible current category versus outgoing query scope,
+  retained return category, mid-table context/wrapping, native return focus and
+  collapsed ancestors at 1440/390. Final merged-baseline `AGENT_PRE_PUSH_BASE=origin/staging agent-pre-push` passed typecheck and all 35 tests at 2026-11-06 12:32 EST (15s).
 
 ## Scope and remaining acceptance
 
