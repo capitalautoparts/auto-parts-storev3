@@ -59,7 +59,7 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
   const [selectedFitment, setSelectedFitment] = useState<PartSelection | null>(null);
 
   const { data: yearsData, isLoading: yearsLoading, error: yearsError, refetch: retryYears } = useQuery(() => vehicleApi.getYears());
-  const { data: categoriesData, error: categoriesError } = useQuery(() => categoryApi.getAll());
+  const { data: categoriesData, error: categoriesError, refetch: retryCategories } = useQuery(() => categoryApi.getAll());
 
   // Expose expandToVehicle and expandToCategory functions via ref
   useImperativeHandle(ref, () => ({
@@ -201,7 +201,10 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
       </div>
 
       {yearsLoading && <p role="status" className="p-2 text-sm">Loading vehicle catalog…</p>}
-      {(yearsError || categoriesError) && <div role="alert" className="p-3 text-sm text-red-700">{(yearsError || categoriesError)?.message}<button onClick={retryYears} className="underline ml-2">Retry</button></div>}
+      {(yearsError || categoriesError) && <div role="alert" className="p-3 text-sm text-red-700">{(yearsError || categoriesError)?.message}<button onClick={() => {
+        if (yearsError) void retryYears();
+        if (categoriesError) void retryCategories();
+      }} className="underline ml-2">Retry</button></div>}
       <div className="text-sm">
         {yearsData?.map((yearData) => (
             <YearNode
@@ -266,7 +269,7 @@ function YearNode({
   onToggleCategory,
   onPartTypeClick,
 }: YearNodeProps) {
-  const { data: makesData, isLoading, error } = useQuery(
+  const { data: makesData, isLoading, error, refetch } = useQuery(
     () => vehicleApi.getMakes(year),
     { enabled: isExpanded }
   );
@@ -285,7 +288,7 @@ function YearNode({
         <span>{year}</span>
       </button>
 
-      {isExpanded && <BranchStatus loading={isLoading} error={error} />}
+      {isExpanded && <BranchStatus loading={isLoading} error={error} onRetry={refetch} />}
       {isExpanded && makesData && (
         <div className="ml-3">
           {makesData.map((make) => (
@@ -349,7 +352,7 @@ function MakeNode({
   onToggleCategory,
   onPartTypeClick,
 }: MakeNodeProps) {
-  const { data: modelsData, isLoading, error } = useQuery(
+  const { data: modelsData, isLoading, error, refetch } = useQuery(
     () => vehicleApi.getModels(make.id, year),
     { enabled: isExpanded }
   );
@@ -373,7 +376,7 @@ function MakeNode({
         <span>{make.name}</span>
       </button>
 
-      {isExpanded && <BranchStatus loading={isLoading} error={error} />}
+      {isExpanded && <BranchStatus loading={isLoading} error={error} onRetry={refetch} />}
       {isExpanded && modelsData && (
         <div className="ml-3">
           {modelsData.map((model) => (
@@ -436,7 +439,7 @@ function ModelNode({
   onToggleCategory,
   onPartTypeClick,
 }: ModelNodeProps) {
-  const { data: enginesData, isLoading, error } = useQuery(
+  const { data: enginesData, isLoading, error, refetch } = useQuery(
     () => vehicleApi.getEngines(model.id, year, make.id),
     { enabled: isExpanded }
   );
@@ -455,7 +458,7 @@ function ModelNode({
         <span>{model.name}</span>
       </button>
 
-      {isExpanded && <BranchStatus loading={isLoading} error={error} />}
+      {isExpanded && <BranchStatus loading={isLoading} error={error} onRetry={refetch} />}
       {isExpanded && enginesData && (
         <div className="ml-3">
           {enginesData.map((engine) => (
@@ -590,7 +593,7 @@ function CategoryNode({
   onPartTypeClick,
 }: CategoryNodeProps) {
   const hasChildren = category.parentId === null;
-  const { data: childCategories, isLoading, error } = useQuery(() => categoryApi.getChildren(category), { enabled: hasChildren && isExpanded, deps: [category.id] });
+  const { data: childCategories, isLoading, error, refetch } = useQuery(() => categoryApi.getChildren(category), { enabled: hasChildren && isExpanded, deps: [category.id] });
   const isThisVehicle = selectedPath.year === year && selectedPath.makeId === make.id && selectedPath.modelId === model.id && selectedPath.engineId === engineId;
 
   const isThisCategorySelected = selectedPath.categoryId === category.id && isThisVehicle;
@@ -636,7 +639,7 @@ function CategoryNode({
 
       {isExpanded && hasChildren && (
         <div className="ml-3">
-          <BranchStatus loading={isLoading} error={error} />
+          <BranchStatus loading={isLoading} error={error} onRetry={refetch} />
           <button className="w-full text-left px-2 py-1 hover:bg-muted rounded text-xs" onClick={() => onPartTypeClick({ year, make, model, engine, category })}>View all {category.name}</button>
           {(childCategories ?? []).map((child) => {
             const isChildSelected = selectedPath.categoryId === child.id && isThisVehicle;
@@ -676,6 +679,6 @@ function CategoryNode({
 }
 
 
-function BranchStatus({ loading, error }: { loading: boolean; error: Error | null }) {
-  return loading ? <p role="status" className="ml-4 py-1 text-xs text-muted-foreground">Loading…</p> : error ? <p role="alert" className="ml-4 py-1 text-xs text-red-700">{error.message}</p> : null;
+function BranchStatus({ loading, error, onRetry }: { loading: boolean; error: Error | null; onRetry?: () => Promise<void> }) {
+  return loading ? <p role="status" className="ml-4 py-1 text-xs text-muted-foreground">Loading…</p> : error ? <p role="alert" className="ml-4 py-1 text-xs text-red-700">{error.message}{onRetry && <button onClick={() => void onRetry()} className="underline ml-2">Retry</button>}</p> : null;
 }

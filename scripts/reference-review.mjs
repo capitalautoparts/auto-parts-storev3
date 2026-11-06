@@ -1,12 +1,13 @@
 // Read-only visual/navigation comparison, run on VM511 only.
 import { firefox } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
-const output = '/tmp/roysauto-reference-review';
+const output = process.env.ROYS_REFERENCE_OUTPUT || '/tmp/roysauto-reference-review';
 await mkdir(output, { recursive: true });
 const browser = await firefox.launch();
 const report = [];
 try {
-  for (const [name, url] of [['original', 'https://auto-parts-storev3.vercel.app/'], ['rockauto', 'https://www.rockauto.com/']]) {
+  for (const [name, url] of [['original', process.env.ROYS_REFERENCE_BASE_URL || 'https://auto-parts-storev3.vercel.app/'], ['rockauto', 'https://www.rockauto.com/']]) {
+    if (process.env.ROYS_REFERENCE_ONLY && process.env.ROYS_REFERENCE_ONLY !== name) continue;
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     page.setDefaultTimeout(15000);
     const entry = { name, url, steps: [] };

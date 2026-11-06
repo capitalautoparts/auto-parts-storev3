@@ -24,7 +24,7 @@ export function createProductPageHandler(
     }
     const input = req.url ?? '';
     const url = new URL(input, 'http://catalog.local');
-    const sku = input.startsWith('/products/') && !input.startsWith('//') ? productSku(url.pathname) : null;
+    const sku = input.startsWith('/products/') && input.split('?', 1)[0] === url.pathname ? productSku(url.pathname) : null;
     let status = 400, title = 'Invalid product link', description = 'This product link is invalid.';
     let head = '', article = '';
     if (sku) {

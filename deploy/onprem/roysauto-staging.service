@@ -1,0 +1,29 @@
+# /etc/systemd/system/roysauto-staging.service on roysauto-staging (VM 459).
+# Modelled on autrex-staging-web.service (VM 453). Installed by infra, not CI.
+[Unit]
+Description=Roy's Auto staging storefront API (catalog proxy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=roys
+Group=roys
+WorkingDirectory=/opt/roysauto/staging/current
+EnvironmentFile=/opt/roysauto/staging/shared/roysauto.env
+Environment=PORT=3200
+Environment=HOST=127.0.0.1
+ExecStart=/usr/bin/node --experimental-strip-types /opt/roysauto/staging/current/server/onprem.ts
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+StandardOutput=append:/var/log/roysauto/staging/api.log
+StandardError=append:/var/log/roysauto/staging/api.err.log
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/roysauto/staging
+
+[Install]
+WantedBy=multi-user.target

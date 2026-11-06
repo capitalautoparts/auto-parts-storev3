@@ -9,6 +9,7 @@
     "test": "node scripts/test.mjs",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "start:onprem": "node --experimental-strip-types server/onprem.ts",
     "test:browser": "node scripts/browser-smoke.mjs"
   },
   "dependencies": {

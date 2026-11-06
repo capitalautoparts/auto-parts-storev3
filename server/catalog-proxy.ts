@@ -2,6 +2,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { validSku } from './product-data.ts';
 
 const GATEWAY = new URL('https://staging.autrex.ca/api/erp');
+// D1575: single fixed LAN upstream (VM 453 nginx) for the on-prem staging runtime.
+// Chosen only by the non-secret deploy-target constant ROYS_ONPREM=1; never by request or env URL.
+const ONPREM_GATEWAY = new URL('http://192.168.88.233/api/erp');
 const CATALOG_PATHS = new Set(['/', '/api/catalog']);
 const USER_AGENT = 'RoysAuto-Catalog-Preview/1.0 (+Autrex; staging read-only)';
 const MAIN_TEST_PROJECT_ID = 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p';
@@ -21,7 +24,14 @@ const routes: Record<string, { path: string; keys: string[]; required?: string[]
   'product-fitments': { path: '/products', keys: ['sku', 'page', 'limit'], required: ['sku'] },
 };
 
-export function upstreamUrl(input: string): URL {
+export function catalogGateway(env: NodeJS.ProcessEnv = {}): URL {
+  if (env.ROYS_ONPREM !== '1') return GATEWAY;
+  // A Vercel deployment must never reach the LAN upstream, even in local-development mode.
+  if (env.VERCEL === '1') throw new Error('CATALOG_DEPLOYMENT_NOT_ALLOWED');
+  return ONPREM_GATEWAY;
+}
+
+export function upstreamUrl(input: string, base: URL = GATEWAY): URL {
   const requestUrl = new URL(input, 'http://catalog.local');
   if (!input.startsWith('/') || input.startsWith('//') || requestUrl.origin !== 'http://catalog.local'
     || !CATALOG_PATHS.has(requestUrl.pathname) || requestUrl.hash) {
@@ -57,7 +67,7 @@ export function upstreamUrl(input: string): URL {
     const hasVehicleFilter = params.has('make') || params.has('model') || searchKeys.some(k => k.endsWith('_id') && params.has(k));
     if (hasVehicleFilter && !vehicleKeys.every(k => params.has(k))) throw new Error('Complete the vehicle selection.');
   }
-  const url = new URL(GATEWAY);
+  const url = new URL(base);
   url.pathname += `/api/v1${route.path}`;
   if (resource === 'product' || resource === 'product-fitments') {
     const sku = params.get('sku');
@@ -81,6 +91,8 @@ export function upstreamUrl(input: string): URL {
 }
 
 export function catalogEnabled(env: NodeJS.ProcessEnv): boolean {
+  // On-prem runtime: never on Vercel, always needs the explicit non-secret flag.
+  if (env.ROYS_ONPREM === '1') return env.VERCEL !== '1' && env.ROYS_CATALOG_PREVIEW_ENABLED === 'true';
   if (env.VERCEL !== '1' || env.ROYS_CATALOG_PREVIEW_ENABLED !== 'true') return false;
   if (env.VERCEL_ENV === 'preview') return true;
   // Main is a staging-data test site, even though Vercel labels it Production.
@@ -92,12 +104,16 @@ export function catalogEnabled(env: NodeJS.ProcessEnv): boolean {
 
 export async function readCatalog(input: string, fetcher: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, localDevelopment = false): Promise<{ status: number; body: unknown }> {
   const send = (status: number, body: unknown) => ({ status, body });
+  let gateway: URL;
+  try { gateway = catalogGateway(env); }
+  catch { return send(503, { error: 'ERP staging catalog access has not been enabled for this deployment.', code: 'CATALOG_DEPLOYMENT_NOT_ALLOWED' }); }
+
   if (!localDevelopment && !catalogEnabled(env)) return send(503, {
     error: 'ERP staging catalog access has not been enabled for this deployment.',
     code: env.ROYS_CATALOG_PREVIEW_ENABLED === 'true' ? 'CATALOG_DEPLOYMENT_NOT_ALLOWED' : 'CATALOG_FLAG_DISABLED',
   });
   let url: URL;
-  try { url = upstreamUrl(input); }
+  try { url = upstreamUrl(input, gateway); }
   catch (error) { return send(400, { error: (error as Error).message }); }
   try {
     const response = await fetcher(url, {
@@ -150,6 +166,7 @@ export function createCatalogHandler(fetcher: typeof fetch = fetch, env: NodeJS.
       res.setHeader('Allow', 'GET');
       res.statusCode = 405;
       return res.end(JSON.stringify({ error: 'The catalog accepts read-only requests.' }));
+
     }
     const result = await readCatalog(req.url ?? '', fetcher, env, localDevelopment);
     res.statusCode = result.status;

@@ -80,7 +80,7 @@ export const categoryApi = {
   },
 };
 
-export function mapErpPart(raw: ErpPart, vehicle?: VehicleContext | null): Part {
+export function mapErpPart(raw: ErpPart): Part {
   const price = raw.pricing?.price;
   const validPrice = raw.pricing?.currency === 'CAD' && typeof price === 'number' && Number.isFinite(price) && price >= 0;
   const core = typeof raw.core_charge === 'number' ? raw.core_charge : raw.core_charge?.amount;
@@ -93,8 +93,11 @@ export function mapErpPart(raw: ErpPart, vehicle?: VehicleContext | null): Part 
     specs: Object.fromEntries((raw.fitment_qualifiers ?? []).map(item => [item.name, item.value])),
     coreCharge: typeof core === 'number' && Number.isFinite(core) ? core : null,
     packQuantity: raw.sellablePackQuantity ?? 1,
-    applicationNotes: (raw.applications ?? []).map(item => [item.submodel, item.engine, item.drive_type, item.position, ...(item.notes ?? []), ...(item.qualifiers ?? []).map(q => [q.name, q.value, q.text].filter(Boolean).join(': '))].filter(Boolean).join(' · ')),
-    fitments: vehicle ? [{ year: vehicle.year, make: vehicle.makeName, model: vehicle.modelName, engine: vehicle.engineName }] : [],
+    applicationNotes: (raw.applications ?? []).map(item => [item.submodel, item.engine, item.drive_type, item.position, ...(item.notes ?? []), ...(item.qualifiers ?? [])].filter(Boolean).join(' · ')),
+    fitmentSummary: raw.fitment_summary ?? undefined,
+    // The search response does not include per-application year/make/model, so
+    // do not turn the selected vehicle context into a confirmed fitment claim.
+    fitments: [],
   };
 }
 
@@ -113,7 +116,7 @@ export const partsApi = {
       model: vehicle?.modelName, engine_base_id: vehicle?.engineId || undefined, page,
       limit: 24, include_facets: 1, include_vehicle_dimensions: vehicle ? 1 : undefined, ...filters });
     const result = await catalogFetch<SearchResult>('search', query);
-    const parts = result.results.map(part => mapErpPart(part, vehicle));
+    const parts = result.results.map(mapErpPart);
     for (const part of parts) knownParts.set(part.id, part);
     if (knownParts.size > 1000) for (const key of [...knownParts.keys()].slice(0, knownParts.size - 1000)) knownParts.delete(key);
     return { ...result, parts };

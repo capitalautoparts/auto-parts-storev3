@@ -1,0 +1,143 @@
+# =============================================================================
+# Deploy On-Prem Staging (Roy's Auto)
+# =============================================================================
+# Modelled on capautov3's deploy-onprem.yml (staging -> VM 453), simplified for a
+# static Vite build plus one small Node process:
+#   build + test on the runner -> publish releases/<sha12> -> flip `current`
+#   -> restart roysauto-staging.service -> smoke / , /healthz and the catalog.
+#
+# The runner lives ON the target VM (roysauto-staging, VM 459, 192.168.88.250)
+# as the unprivileged `roysdeploy` user, label `roysauto-staging`. This repo is
+# public, so the runner is kept off the shared runner-site VM; its only powers
+# are writing /opt/roysauto/staging/releases and restarting this one service.
+# Never add a pull_request trigger to a job that uses this runner.
+#
+# Host setup, runner registration and rollback: deploy/onprem/README.md.
+# =============================================================================
+
+name: Deploy On-Prem Staging
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: roysauto-deploy-onprem-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  ROOT: /opt/roysauto/staging
+  SERVICE: roysauto-staging.service
+  API_PORT: '3200'
+  PUBLIC_URL: https://roys-staging.autrex.ca/
+
+jobs:
+  deploy:
+    name: Deploy to roysauto-staging
+    # Fork code never reaches the self-hosted runner.
+    if: github.repository == 'capitalautoparts/auto-parts-storev3' && github.ref == 'refs/heads/staging'
+    runs-on: [self-hosted, roysauto-staging]
+    timeout-minutes: 20
+    environment: roysauto-staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check toolchain and deploy access
+        run: |
+          set -euo pipefail
+          node -v | grep -q '^v22\.' || { echo "::error::Node 22 required, found $(node -v)"; exit 1; }
+          test -w "$ROOT/releases" || { echo "::error::$ROOT/releases is not writable"; exit 1; }
+          sudo -n /usr/bin/systemctl is-active "$SERVICE" || echo "::warning::$SERVICE not active yet (first deploy?)"
+
+      - name: Install, test and build
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm test -- --run
+          npm run build
+
+      - name: Publish release
+        id: publish
+        run: |
+          set -euo pipefail
+          RELEASE="${GITHUB_SHA::12}"
+          RELEASE_DIR="$ROOT/releases/$RELEASE"
+          PREVIOUS="$(readlink -f "$ROOT/current" 2>/dev/null || true)"
+          echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RELEASE_DIR"
+          # Runtime needs only the static build and the dependency-free server
+          # (Node 22 strips the TypeScript types; node: built-ins only).
+          rsync -a --delete dist/ "$RELEASE_DIR/dist/"
+          rsync -a --delete server/ "$RELEASE_DIR/server/"
+          cp package.json "$RELEASE_DIR/package.json"
+          printf '%s\n' "$RELEASE" > "$RELEASE_DIR/REVISION"
+          printf '%s\n' "$GITHUB_SHA" > "$RELEASE_DIR/REVISION_FULL"
+          chmod -R a+rX "$RELEASE_DIR"
+          ln -sfnT "$RELEASE_DIR" "$ROOT/current"
+          test "$(cat "$ROOT/current/REVISION")" = "$RELEASE"
+
+      - name: Restart service
+        run: sudo -n /usr/bin/systemctl restart "$SERVICE"
+
+      - name: Smoke
+        id: smoke
+        env:
+          RELEASE: ${{ steps.publish.outputs.release }}
+        run: |
+          set -euo pipefail
+          health=""
+          for _ in $(seq 1 20); do
+            health="$(curl -fsS -m 5 "http://127.0.0.1:$API_PORT/healthz" || true)"
+            [ "$(jq -r '.status // empty' <<<"$health" 2>/dev/null)" = ok ] && break
+            sleep 1
+          done
+          echo "healthz: $health"
+          [ "$(jq -r .status <<<"$health")" = ok ] || { echo "::error::service did not come up"; exit 1; }
+
+          served="$(curl -fsS -m 5 http://127.0.0.1/__revision)"
+          [ "$served" = "$RELEASE" ] || { echo "::error::nginx serves $served, expected $RELEASE"; exit 1; }
+
+          code="$(curl -sS -o /tmp/roys-index.html -w '%{http_code}' -m 10 http://127.0.0.1/)"
+          [ "$code" = 200 ] && grep -q '<div id="root"' /tmp/roys-index.html \
+            || { echo "::error::nginx / returned $code or no app shell"; exit 1; }
+
+          # Through nginx -> on-prem API -> VM 453 gateway over the LAN.
+          code="$(curl -sS -o /tmp/roys-years.json -w '%{http_code}' -m 20 'http://127.0.0.1/api/catalog?resource=years')"
+          [ "$code" = 200 ] && jq -e '.years | length > 0' /tmp/roys-years.json >/dev/null \
+            || { echo "::error::catalog years returned $code"; head -c 300 /tmp/roys-years.json; exit 1; }
+          echo "### roysauto-staging $RELEASE" >> "$GITHUB_STEP_SUMMARY"
+          echo "healthz \`$health\`, / 200, catalog years 200" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Roll back on failed smoke
+        if: ${{ failure() && steps.publish.outputs.previous != '' }}
+        env:
+          PREVIOUS: ${{ steps.publish.outputs.previous }}
+        run: |
+          set -euo pipefail
+          ln -sfnT "$PREVIOUS" "$ROOT/current"
+          sudo -n /usr/bin/systemctl restart "$SERVICE"
+          echo "::error::rolled back to $(cat "$ROOT/current/REVISION")"
+
+      - name: Public route check (Cloudflare)
+        if: ${{ success() }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -m 20 -A 'RoysAuto-Deploy-Smoke/1.0 (+Autrex; staging)' "$PUBLIC_URL")"
+          echo "public $PUBLIC_URL -> $code" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$code" = 200 ] || echo "::warning::public route returned $code"
+
+      - name: Prune old releases
+        if: ${{ success() }}
+        run: |
+          set -euo pipefail
+          CURRENT="$(readlink -f "$ROOT/current")"
+          # Keep current plus the three newest others for rollback.
+          ls -1dt "$ROOT"/releases/*/ | sed 's#/$##' | grep -vxF "$CURRENT" | tail -n +4 | xargs -r rm -rf --

@@ -30,6 +30,7 @@ export default function App() {
   const [page, setPage] = useState(1);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const tree = useRef<TreeSidebarHandle>(null);
+  const resultsSection = useRef<HTMLElement>(null);
   const restored = useRef(false);
   useEffect(() => {
     if (!restored.current && expandedVehicle) tree.current?.expandToVehicle({ type: 'vehicle', label: '', ...expandedVehicle });
@@ -41,6 +42,9 @@ export default function App() {
     engineId: selectedFitment.engine.id, engineName: selectedFitment.engine.name,
   } : expandedVehicle, [selectedFitment, expandedVehicle]);
   const scopedCategory = searchQuery ? undefined : selectedFitment?.category;
+  useEffect(() => {
+    if (scopedCategory || searchQuery.length >= 2) resultsSection.current?.scrollIntoView({ block: 'start' });
+  }, [scopedCategory?.slug, searchQuery]);
   const { data, isLoading, error, refetch } = useQuery(
     () => partsApi.search({ q: searchQuery || undefined, category: scopedCategory, vehicle: vehicleContext, page, filters }),
     { enabled: !!scopedCategory || searchQuery.trim().length >= 2, deps: [scopedCategory?.slug, vehicleContext, searchQuery, page, filters] },
@@ -72,8 +76,8 @@ export default function App() {
     onCheckout: () => toast.info('Checkout is disabled during catalog testing.'),
   };
   const changeFilter = (key: string, value: string) => { setFilters(current => ({ ...current, [key]: value })); setPage(1); };
-  const renderParts = () => <section className="border-t border-border pt-4 min-w-0" data-testid="inline-parts" aria-label="Catalog results" aria-busy={isLoading}>
-    <div className="mb-4 py-3">
+  const renderParts = () => <section ref={resultsSection} className="border-t border-border pt-3 min-w-0" data-testid="inline-parts" aria-label="Catalog results" aria-busy={isLoading}>
+    <div className="mb-3 py-2">
       <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{searchQuery ? 'Part search' : 'Selected fitment'}</div>
       <div className="mt-1 font-semibold text-base text-foreground">
         {vehicleContext ? `${vehicleContext.year} ${vehicleContext.makeName} ${vehicleContext.modelName} > ${vehicleContext.engineName ?? 'All engines'}` : 'All vehicles'}

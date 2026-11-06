@@ -1,16 +1,51 @@
 // VM511 only, after a Vite build. Real ERP staging; no response interception.
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { createServer as reservePort } from 'node:net';
+import { once } from 'node:events';
+import { resolve } from 'node:path';
 import { firefox } from '@playwright/test';
 import { preview } from 'vite';
 import { createProductSmokeMonitor } from './product-links-monitor.mjs';
 
 const output = process.env.ROYS_LINKS_OUTPUT || '/tmp/roys-product-links';
 await mkdir(output, { recursive: true });
-const server = process.env.ROYS_LINKS_BASE_URL ? null : await preview({ preview: { host: '127.0.0.1', port: 0 }, configFile: 'vite.config.ts' });
+let runtime, packagedLayout;
+let previewOptions = { preview: { host: '127.0.0.1', port: 0 }, configFile: 'vite.config.ts' };
+if (process.env.ROYS_LINKS_PACKAGED === '1') {
+  assert.equal(process.env.ROYS_ONPREM, '1');
+  assert.equal(process.env.ROYS_CATALOG_PREVIEW_ENABLED, 'true');
+  assert.notEqual(process.env.VERCEL, '1');
+  packagedLayout = await mkdtemp(resolve(output, 'release-'));
+  for (const entry of ['server', 'dist', 'package.json']) await cp(entry, `${packagedLayout}/${entry}`, { recursive: true });
+  assert.deepEqual((await readdir(packagedLayout)).sort(), ['dist', 'package.json', 'server']);
+  const reservation = reservePort().listen(0, '127.0.0.1'); await once(reservation, 'listening');
+  const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
+  const target = `http://127.0.0.1:${port}`;
+  let runtimeLog = '';
+  runtime = spawn(process.execPath, ['--experimental-strip-types', `${packagedLayout}/server/onprem.ts`], {
+    cwd: packagedLayout, env: { ...process.env, HOST: '127.0.0.1', PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  runtime.stdout.on('data', chunk => { runtimeLog += chunk; }); runtime.stderr.on('data', chunk => { runtimeLog += chunk; });
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try { if ((await fetch(`${target}/healthz`)).ok) break; } catch { /* Bounded startup, no ERP requests. */ }
+      if (attempt >= 39 || runtime.exitCode !== null) throw new Error(`Packaged runtime failed to start: ${runtimeLog}`);
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+  } catch (error) { runtime.kill('SIGTERM'); throw error; }
+  // Vite supplies static assets as nginx would; real Node handles every product
+  // document and API read, from the exact dependency-free deployed layout.
+  previewOptions = { configFile: false, preview: { host: '127.0.0.1', port: 0,
+    proxy: { '/products/': target, '/api/catalog': target, '/healthz': target } } };
+}
+const server = process.env.ROYS_LINKS_BASE_URL ? null : await preview(previewOptions);
 const origin = process.env.ROYS_LINKS_BASE_URL?.replace(/\/+$/, '') || server.resolvedUrls.local[0].replace(/\/+$/, '');
 const browser = await firefox.launch();
-const report = { recordedEastern: new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto', timeZoneName: 'short' }), origin, cases: [], apiResponses: [], pageErrors: [], screenshots: [] };
+const report = { recordedEastern: new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto', timeZoneName: 'short' }), origin,
+  runtime: packagedLayout ? { mode: 'packaged-onprem-node', layout: packagedLayout, entries: ['server', 'dist', 'package.json'] } : { mode: 'vite-preview' },
+  cases: [], apiResponses: [], pageErrors: [], screenshots: [] };
 const monitor = createProductSmokeMonitor(report);
 const run = action => monitor.run(action);
 const assertSchema = async (page, sku) => {
@@ -103,5 +138,6 @@ try {
 } finally {
   await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2));
   await browser.close(); if (server) await new Promise(resolve => server.httpServer.close(resolve));
+  runtime?.kill('SIGTERM');
   console.log(JSON.stringify(report, null, 2));
 }

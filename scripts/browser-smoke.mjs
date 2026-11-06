@@ -1,4 +1,5 @@
-// Manual integrated check: run on VM511 after npm run build. No API interception.
+// Run on VM511 after building. Visual journey uses real API responses; the final
+// recovery case separately aborts two requests to exercise Retry.
 // ROYS_SMOKE_FUNCTION_ENTRYPOINT selects packaged JS instead of Vite's source adapter.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -14,10 +15,14 @@ const reservation = createServer().listen(0, '127.0.0.1');
 await once(reservation, 'listening');
 const port = reservation.address().port;
 await new Promise(resolve => reservation.close(resolve));
-const origin = `http://127.0.0.1:${port}`;
+// ROYS_SMOKE_BASE_URL checks an already deployed host (e.g. roysauto-staging) instead of a local preview.
+const deployedBase = process.env.ROYS_SMOKE_BASE_URL?.replace(/\/+$/, '');
+const origin = deployedBase || `http://127.0.0.1:${port}`;
 let previewLog = '';
 let closePreview;
-if (process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT) {
+if (deployedBase) {
+  closePreview = async () => {};
+} else if (process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT) {
   const { default: handler } = await import(pathToFileURL(process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT).href);
   const { preview } = await import('vite');
   const server = await preview({
@@ -42,7 +47,7 @@ if (process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT) {
 }
 let browser;
 let activePage;
-const report = { functionMode: process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT ? 'packaged-js' : 'vite-source', cases: [], apiRequests: 0, apiResponses: [], searchUrls: [], vehicleContexts: [], pageErrors: [], screenshots: [] };
+const report = { functionMode: deployedBase ? `deployed ${deployedBase}` : process.env.ROYS_SMOKE_FUNCTION_ENTRYPOINT ? 'packaged-js' : 'vite-source', cases: [], apiRequests: 0, apiResponses: [], apiTimings: [], searchUrls: [], vehicleContexts: [], pageErrors: [], screenshots: [] };
 const accountRequests = [];
 const apiPayloads = new Map();
 const apiWaiters = [];
@@ -77,21 +82,25 @@ try {
   const page = await context.newPage();
   activePage = page;
   page.setDefaultTimeout(45_000);
-  page.on('pageerror', error => report.pageErrors.push(error.message));
-  page.on('request', request => {
+  const requestStarted = new WeakMap();
+  const observePage = observedPage => {
+  observedPage.on('pageerror', error => report.pageErrors.push(error.message));
+  observedPage.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/catalog') requestStarted.set(request, performance.now());
     if (/\/api\/(auth|checkout|orders)(?:\/|\?|$)/.test(request.url())) accountRequests.push(request.url());
   });
-  page.on('response', async response => {
+  observedPage.on('response', async response => {
     const url = new URL(response.url());
     if (!url.pathname.endsWith('/api/catalog')) return;
     const params = url.searchParams;
     const resource = params.get('resource') ?? 'unknown';
     const payload = await response.json().catch(() => null);
+    report.apiTimings.push({ resource, url: `${url.pathname}${url.search}`, status: response.status(), elapsedMs: Math.round(performance.now() - (requestStarted.get(response.request()) ?? performance.now())) });
     if (response.status() === 502 && typeof payload?.reference === 'string') {
       proxy403Reference = payload.reference;
       report.proxy403Reference = proxy403Reference;
       rejectProxy403(new Error(`Staging Cloudflare refused an ERP request (cf-ray ${proxy403Reference}); stopped without retrying.`));
-      await page.close().catch(() => {});
+      await observedPage.close().catch(() => {});
       return;
     }
     const actualParams = new URLSearchParams([...params.entries()].filter(([key]) => key !== 'resource'));
@@ -115,6 +124,8 @@ try {
       }
     }
   });
+  };
+  observePage(page);
   const screenshot = async name => {
     await page.screenshot({ path: `${output}/${name}.png` });
     report.screenshots.push(`${name}.png`);
@@ -218,7 +229,7 @@ try {
   const toyotaSearch = await assertSearchContext({ ...toyota, ...toyotaCategory });
   assert.match(await page.getByTestId('inline-parts').textContent(), /2020 Toyota Camry/);
   assert.equal(await page.getByTestId('inline-parts').count(), 1);
-  await page.getByTestId('inline-parts').locator('table').first().locator('thead').scrollIntoViewIfNeeded();
+  await page.getByTestId('parts-table').scrollIntoViewIfNeeded();
   await screenshot('desktop-original-parts');
   report.cases.push('Original tree → year → make → model → engine → category → inline real ERP parts');
   const rawSku = (toyotaSearch.payload?.results ?? []).find(part => part.sku === 'DVNJ_ALD1212M');
@@ -255,6 +266,22 @@ try {
   await guarded(page.getByLabel('In stock only', { exact: true }).check());
   await waitParts();
   report.cases.push('ERP part-number search and stock filter inside the same page');
+
+  await guarded(search.fill('2021 Ford F-150'));
+  const vehicleSuggestion = page.getByRole('option').filter({ hasText: '2021 Ford F-150' });
+  await guarded(vehicleSuggestion.first().waitFor());
+  assert.ok(await vehicleSuggestion.count(), 'Vehicle suggestions remain available with a selected Camry');
+  await search.press('Escape');
+  await search.fill('ALD1212M');
+  const searchButton = page.getByRole('button', { name: 'Search catalog', exact: true });
+  assert.notEqual(await searchButton.evaluate(element => getComputedStyle(element).color), 'rgb(255, 255, 255)', 'Search control must not inherit white text on the white input');
+  await searchButton.click();
+  await waitParts();
+  // Cross the autocomplete debounce boundary after an immediate submission.
+  await page.waitForTimeout(350);
+  assert.equal(await search.getAttribute('aria-expanded'), 'false', 'Submitting closes stale autocomplete');
+  assert.equal(await page.getByText('Searching...', { exact: true }).count(), 0, 'Submitting before the debounce must not leave a stuck spinner');
+  report.cases.push('Selected-vehicle search still finds another vehicle; accessible Search button submits in-page');
 
   await page.getByRole('button', { name: 'Return to vehicle catalog' }).click();
   // Same model/engine IDs occur across years. Opening another year must not
@@ -316,20 +343,56 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('main').evaluate(element => { element.scrollTop = 0; });
   await screenshot('mobile-original-home');
-  await page.getByTestId('inline-parts').locator('table').first().locator('thead').scrollIntoViewIfNeeded();
+  await page.getByTestId('parts-table').scrollIntoViewIfNeeded();
   const rowHeights = await page.locator('[data-part-id]').evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
   assert.ok(Math.max(...rowHeights) < 280, 'Compact rows retain usable dimensions on mobile');
+  const mobileRow = page.locator('[data-part-id]').first();
+  const mobileAdd = await mobileRow.getByRole('button', { name: 'Add', exact: true }).boundingBox();
+  assert.ok(mobileAdd && mobileAdd.x >= 0 && mobileAdd.x + mobileAdd.width <= 390, 'Add stays inside the mobile viewport without horizontal scrolling');
+  const mobileOverflow = await mobileRow.evaluate(element => element.scrollWidth > element.clientWidth);
+  assert.equal(mobileOverflow, false, 'Mobile product row fits the screen');
   await screenshot('mobile-original-parts');
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'No page overflow at 390px; wide parts tables scroll within their own panel');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'No page overflow at 390px');
   await page.getByRole('button', { name: 'Open Quick Cart', exact: true }).filter({ visible: true }).click();
   await page.getByRole('dialog').getByText('ALD1212M', { exact: true }).waitFor();
   assert.equal(await page.getByRole('dialog').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(255, 255, 255)');
   await screenshot('mobile-original-cart');
   await page.keyboard.press('Escape');
-  report.cases.push('Original mobile tree, internally scrolling parts table and Quick Cart sheet');
+  report.cases.push('Mobile product rows keep price and Add visible; Quick Cart remains an in-page sheet');
   assert.deepEqual(report.pageErrors, []);
   assert.deepEqual(accountRequests, [], 'Catalog testing must not call account, checkout or order endpoints');
-  console.log(JSON.stringify(report, null, 2));
+  // Fault injection is separate from the real-data visual journey above. Only
+  // the first request is aborted; Retry must reach the real staging API.
+  const recovery = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const recoveryPage = await recovery.newPage();
+  activePage = recoveryPage;
+  observePage(recoveryPage);
+  const failedResources = new Set();
+  await recoveryPage.route('**/api/catalog?*', route => {
+    const resource = new URL(route.request().url()).searchParams.get('resource');
+    if (['categories', 'makes'].includes(resource) && !failedResources.has(resource)) {
+      failedResources.add(resource);
+      return route.abort('failed');
+    }
+    return route.continue();
+  });
+  await recoveryPage.goto(origin);
+  await recoveryPage.getByTestId('vehicle-tree').getByRole('button', { name: '2020', exact: true }).waitFor();
+  for (const resource of ['categories', 'makes']) {
+    if (resource === 'makes') await recoveryPage.getByTestId('vehicle-tree').getByRole('button', { name: '2020', exact: true }).click();
+    const retry = recoveryPage.getByRole('alert').getByRole('button', { name: 'Retry', exact: true });
+    await retry.waitFor();
+    const response = recoveryPage.waitForResponse(r => new URL(r.url()).searchParams.get('resource') === resource && r.status() === 200);
+    await retry.click();
+    await guarded(response);
+    await recoveryPage.getByRole('alert').waitFor({ state: 'detached' });
+  }
+  await recoveryPage.getByRole('button', { name: 'Toyota', exact: true }).waitFor();
+  await recovery.close();
+  report.cases.push('Failed root categories and branch makes recover through Retry using real staging responses');
+  assert.deepEqual(report.pageErrors, []);
+  assert.deepEqual(accountRequests, [], 'Recovery must not call account, checkout or order endpoints');
+  console.log(JSON.stringify({ cases: report.cases, apiRequests: report.apiRequests, pageErrors: report.pageErrors, screenshots: report.screenshots }, null, 2));
 } catch (error) {
   report.failure = error.message;
   if (activePage) {
