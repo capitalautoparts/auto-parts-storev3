@@ -6,14 +6,17 @@ import { partsApi, type Part } from '@/lib/api';
 import { useQuery } from '@/lib/hooks';
 import { closeProduct } from '@/features/catalog/product-navigation';
 import { syncProductSchema } from '@/features/catalog/product-metadata';
-import { productMeta, productSku } from '../../server/product-data.ts';
+import { productMeta } from '../../server/product-data.ts';
+import { parseNavigationUrl } from '@/features/catalog/navigation-state';
 
 export function ProductRoute({ onAddToCart }: { onAddToCart: (id: string | number, part?: Part) => void }) {
-  const [pathname, setPathname] = useState(window.location.pathname);
+  const [href, setHref] = useState(window.location.pathname + window.location.search + window.location.hash);
   const [fitmentPage, setFitmentPage] = useState(1);
-  const sku = productSku(pathname), isProduct = pathname.startsWith('/products/');
+  const parsed = parseNavigationUrl(href);
+  const sku = parsed.status === 'parsed' && parsed.state.kind === 'product' ? parsed.state.product.sku : null;
+  const isProduct = href.startsWith('/products/');
   useEffect(() => {
-    const update = () => { setPathname(window.location.pathname); setFitmentPage(1); };
+    const update = () => { setHref(window.location.pathname + window.location.search + window.location.hash); setFitmentPage(1); };
     window.addEventListener('popstate', update);
     return () => window.removeEventListener('popstate', update);
   }, []);

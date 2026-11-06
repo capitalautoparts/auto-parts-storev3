@@ -29,3 +29,16 @@ Verification: real transition/resolution/history fixtures remotely on VM511,
 one diff-aware pre-push, coordinated integrated Firefox 1440/390 journey using
 the existing refusal monitor; actual request/screenshot evidence. Reviewable
 staging PR, available review feedback, agent-pr-finish, ready handoff; no merge.
+
+Parent-approved review expansions: browser-only `category_parent` identifies a
+verified root for one bounded children lookup; no leaf self lookup/proxy change.
+`PartsTable.tsx` adds only three `data-catalog-focus` attributes for exact return
+control identity, with no layout changes. `navigation-presentation.ts` owns the
+narrow mount-aware restoration helper. After RP5's commit/release, RP1 owns only
+the pre-existing product-history test block in `tests/product.test.ts` on this
+branch; mapping tests remain untouched.
+
+Earlier 20/20 pure/controller fixtures passed on VM511. After coherent A–G
+review changes, the smallest affected remote navigation batch passed 30/30.
+The residual header-focus and cumulative category/clear fixes passed 33/33.
+Browser, final pre-push and PR evidence are recorded in the task evidence file.

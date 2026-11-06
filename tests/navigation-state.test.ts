@@ -136,7 +136,7 @@ test('supported SKU paths preserve identity/encoding; bare MPN, synthetic IDs an
   }
   for (const path of ['/products/ALD1212M', '/products/1234', '/products/pp-123', '/products/abcd_A',
     '/products/ABCD_A%2Fetc', '/products/ABCD_A%5Cetc', '/products/ABCD_A%252fetc',
-    '/products/ABCD_A/fitments', '/products/ABCD_A?q=brakes', '/products/ABCD_A/']) invalid(path);
+    '/products/ABCD_A/fitments', '/products/ABCD_A/']) invalid(path);
   for (const q of ['ALD1212M', 'DVNJ_ALD1212M', '1234']) {
     const state = listing(`/?q=${q}`);
     assert.equal(state.kind, 'search', 'A text query never guesses a product or vehicle identity');
@@ -231,4 +231,25 @@ test('versioned overlay background preserves URL/filter/page/focus/scroll withou
   for (const value of [null, {}, { ...background, version: 2 }, { ...background, href: '//evil.test' },
     { ...background, scroll: { x: -1, y: 1 } }, { ...background, scroll: { x: 0, y: Infinity } },
     { ...background, focusKey: 'bad\nkey' }]) assert.equal(parseCatalogBackground(value), null);
+});
+
+
+test('product pathname identity ignores non-identity query and fragment without activating listing state', () => {
+  for (const suffix of ['?q=ignored', '?utm_source=mail', '#applications', '?scope=all&return_to=https://evil.test&page=2#fitments']) {
+    const state = parsed(`/products/DVNJ_ALD1212M${suffix}`);
+    assert.deepEqual(state, parsed('/products/DVNJ_ALD1212M'));
+    assert.equal(serializeNavigation(state), '/products/DVNJ_ALD1212M');
+  }
+  for (const url of ['/products/ALD1212M?q=ignored', '/products/ABCD_A%2Fetc#fitments', '/products/ABCD_A/fitments?x=y']) invalid(url);
+});
+
+test('browser-only parent category remains separate from ERP request params and survives filter/page edits', () => {
+  const state = listing(`/?${vehicleQuery}&category=fixture-pads&category_parent=fixture-brakes`);
+  assert.equal(state.category?.parentSlug, 'fixture-brakes');
+  assert.equal(serializeNavigation(state), `/?${vehicleQuery}&category=fixture-pads&category_parent=fixture-brakes`);
+  const next = transitionNavigation(state, { type: 'change-query', key: 'page', value: '2' });
+  assert.equal(next.navigation.status, 'parsed');
+  if (next.navigation.status === 'parsed' && next.navigation.state.kind !== 'product') assert.equal(next.navigation.state.category?.parentSlug, 'fixture-brakes');
+  invalid('/?category_parent=fixture-brakes', 'value');
+  invalid('/?category=fixture-pads&category_parent=BAD', 'value');
 });

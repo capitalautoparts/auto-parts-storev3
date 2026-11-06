@@ -13,94 +13,105 @@ import { toast, Toaster } from 'sonner';
 import { Loader2, ShoppingCart } from 'lucide-react';
 import { partsApi, cartApi, type VehicleContext, type VehicleSearchResult, type Part } from '@/lib/api';
 import { useQuery } from '@/lib/hooks';
-import { DIMENSIONS, safeStorage, saveStorage } from '@/features/catalog/model';
-
-const VEHICLE_KEY = 'roysauto.original-vehicle.v1';
-function savedVehicle(): VehicleExpansion | null {
-  try {
-    const value = JSON.parse(safeStorage(VEHICLE_KEY) ?? 'null');
-    return value && ['year', 'makeId', 'modelId', 'engineId'].every(key => Number.isInteger(value[key]) && value[key] >= 0)
-      && ['makeName', 'modelName', 'engineName'].every(key => typeof value[key] === 'string' && value[key].length <= 120) ? value : null;
-  } catch { return null; }
-}
+import { DIMENSIONS } from '@/features/catalog/model';
+import { emptyListing } from '@/features/catalog/navigation-controller';
+import { listingQuery, serializeNavigation } from '@/features/catalog/navigation-state';
+import { useCatalogNavigation } from '@/features/catalog/use-catalog-navigation';
+import { restoreCatalogPresentation } from '@/features/catalog/navigation-presentation';
 
 export default function App() {
-  const [selectedFitment, setSelectedFitment] = useState<PartSelection | null>(null);
-  const [activeVehicle, setActiveVehicle] = useState<VehicleExpansion | null>(savedVehicle);
-  const [vehicleNotice, setVehicleNotice] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<Record<string, string>>({});
-  const [page, setPage] = useState(1);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [draft, setDraft] = useState('');
   const tree = useRef<TreeSidebarHandle>(null);
+  const main = useRef<HTMLElement>(null);
   const resultsSection = useRef<HTMLElement>(null);
-  const restored = useRef(false);
-  const [catalogFocus, setCatalogFocus] = useState(0);
-  useEffect(() => {
-    if (!restored.current && activeVehicle) tree.current?.expandToVehicle({ type: 'vehicle', label: '', ...activeVehicle });
-    restored.current = true;
-  }, [activeVehicle]);
+  const { controller, snapshot, notice: vehicleNotice, restoring } = useCatalogNavigation(main, tree);
+  const listing = snapshot.listing;
+  const state = listing?.state ?? emptyListing();
+  const activeVehicle = listing?.vehicle ?? null;
   const vehicleContext: VehicleContext | null = activeVehicle;
-  const scopedCategory = searchQuery ? undefined : selectedFitment?.category;
-  useEffect(() => {
-    if (scopedCategory || searchQuery.length >= 2) resultsSection.current?.scrollIntoView({ block: 'start' });
-  }, [scopedCategory?.slug, searchQuery, vehicleContext]);
-  // Catalog deliberately resets search. Queue root focus after the resulting
-  // render and the results-scroll effect above, including from the mobile menu.
-  useEffect(() => {
-    if (catalogFocus) tree.current?.focusVehiclePicker();
-  }, [catalogFocus]);
+  const scopedCategory = listing?.category;
+  const searchQuery = state.text.residual;
+  const page = state.filters.page;
+  const query = listingQuery(state);
+  const filters: Record<string, string> = Object.fromEntries(Object.entries(query).filter(([key]) =>
+    [...DIMENSIONS, 'part_type', 'brand', 'in_stock_only', 'sort', 'sort_order'].includes(key)));
+  const selectedFitment: PartSelection | null = activeVehicle && activeVehicle.engineId !== undefined && scopedCategory ? {
+    year: activeVehicle.year, make: { id: activeVehicle.makeId, name: activeVehicle.makeName },
+    model: { id: activeVehicle.modelId, name: activeVehicle.modelName, makeId: activeVehicle.makeId },
+    engine: { id: activeVehicle.engineId, name: activeVehicle.engineName ?? 'Engine unspecified', modelId: activeVehicle.modelId }, category: scopedCategory,
+  } : null;
+  const showResults = !!scopedCategory || searchQuery.trim().length >= 2 || !!activeVehicle;
+  const inlineResults = !!selectedFitment && !searchQuery && !!scopedCategory?.navigationParentKnown;
   const { data, isLoading, error, refetch } = useQuery(
     () => partsApi.search({ q: searchQuery || undefined, category: scopedCategory, vehicle: vehicleContext, page, filters }),
-    { enabled: !!scopedCategory || searchQuery.trim().length >= 2, deps: [scopedCategory?.slug, vehicleContext, searchQuery, page, filters] },
+    { enabled: !!listing && showResults, deps: [scopedCategory?.slug, vehicleContext, searchQuery, page, filters] },
   );
   const { data: cart, refetch: refreshCart } = useQuery(() => cartApi.get('catalog-test'));
 
-  function resetResults() { setFilters({}); setPage(1); }
-  function forgetSavedVehicle() {
-    // Use the existing storage helper; null is a valid cleared-state tombstone.
-    if (saveStorage(VEHICLE_KEY, 'null')) return true;
-    try { localStorage.removeItem(VEHICLE_KEY); return true; } catch { return false; }
-  }
-  function clearVehicle(focusPicker = true) {
-    resetResults(); setActiveVehicle(null); setSelectedFitment(null); setSearchQuery('');
-    setVehicleNotice(forgetSavedVehicle() ? '' : 'Vehicle cleared for this visit. The saved choice could not be cleared; it may return after reload. Retry before reloading.');
-    if (focusPicker) tree.current?.focusVehiclePicker();
-  }
-  function rememberVehicle(vehicle: VehicleExpansion) {
-    setActiveVehicle(vehicle);
-    if (!vehicleNotice && JSON.stringify(vehicle) === JSON.stringify(activeVehicle)) return;
-    setVehicleNotice('');
-    if (!saveStorage(VEHICLE_KEY, JSON.stringify(vehicle))) {
-      const forgotten = forgetSavedVehicle();
-      setVehicleNotice(forgotten ? 'Your vehicle could not be saved in this browser. Select it again after reload.'
-        : 'Your vehicle could not be saved in this browser. A previous vehicle may return after reload.');
+  // Restore disclosure before waiting for asynchronously mounted tree/results.
+  useEffect(() => {
+    if (snapshot.status !== 'ready') return;
+    restoring.current = true;
+    setDraft('');
+    if (snapshot.presentation?.disclosure) tree.current?.restoreDisclosure(snapshot.presentation.disclosure);
+    else if (activeVehicle) {
+      if (scopedCategory) tree.current?.revealSelection('selection', activeVehicle, scopedCategory, false);
+      else tree.current?.expandToVehicle({ type: 'vehicle', label: '', ...activeVehicle }, false);
     }
-  }
+  }, [snapshot.revision]);
+  useEffect(() => {
+    if (snapshot.status !== 'ready' || !main.current) return;
+    const container = main.current;
+    const presentation = snapshot.presentation;
+    let frame = 0;
+    let finished = false;
+    const restore = () => {
+      if (finished || isLoading) return;
+      const target = showResults ? resultsSection.current : document.getElementById('vehicle-picker');
+      if (!restoreCatalogPresentation(container, presentation, isLoading, target)) return;
+      finished = true; restoring.current = false;
+      controller.savePresentation();
+    };
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(restore); };
+    const observer = new MutationObserver(schedule);
+    observer.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'aria-busy'] });
+    schedule();
+    return () => { finished = true; cancelAnimationFrame(frame); observer.disconnect(); };
+  }, [snapshot.revision, isLoading]);
+
+  function clearVehicle() { void controller.transition({ type: 'clear-vehicle' }); }
   function selectPartType(selection: PartSelection) {
-    resetResults();
-    rememberVehicle({ year: selection.year, makeId: selection.make.id, makeName: selection.make.name,
-      modelId: selection.model.id, modelName: selection.model.name, engineId: selection.engine.id, engineName: selection.engine.name });
-    setSelectedFitment(selection); setSearchQuery('');
+    const vehicle = { year: selection.year, make: selection.make.name, model: selection.model.name,
+      dimensions: selection.engine.id ? { engine_base_id: String(selection.engine.id) } : {} };
+    // One atomic vehicle/category commit; Category.id is never a PCDB ID.
+    void controller.selectCategory(vehicle,
+      { kind: 'category-slug', slug: selection.category.slug!, ...(selection.categoryParentSlug ? { parentSlug: selection.categoryParentSlug } : {}) });
   }
   function selectVehicle(vehicle: VehicleExpansion) {
-    resetResults(); rememberVehicle(vehicle); setSelectedFitment(null); setSearchQuery('');
+    void controller.transition({ type: 'replace-vehicle', vehicle: { year: vehicle.year, make: vehicle.makeName, model: vehicle.modelName,
+      dimensions: vehicle.engineId ? { engine_base_id: String(vehicle.engineId) } : {} } });
   }
   function returnTo(target: 'categories' | 'engines' | 'years' | 'makes' | 'models' | 'selection') {
+    if (target === 'selection' && scopedCategory && !scopedCategory.navigationParentKnown) {
+      resultsSection.current?.focus(); resultsSection.current?.scrollIntoView({ block: 'start' }); return;
+    }
     if (vehicleContext) tree.current?.revealSelection(target, vehicleContext, selectedFitment?.category);
   }
-  function showCatalog() {
-    setSearchQuery(''); resetResults(); setCatalogFocus(value => value + 1);
-  }
-  function textSearch(query: string) { setSearchQuery(query.trim()); resetResults(); }
+  function showCatalog() { void controller.transition({ type: 'catalog-root' }); }
+  function textSearch(text: string) { void controller.transition({ type: 'change-query', key: 'q', value: text.trim() }); }
   function vehicleSearch(result: VehicleSearchResult) {
-    resetResults(); setSelectedFitment(null); setSearchQuery('');
     if (result.year !== undefined && result.makeId !== undefined && result.makeName !== undefined
-      && result.modelId !== undefined && result.modelName !== undefined && result.engineId !== undefined && result.engineName !== undefined) {
-      rememberVehicle({ year: result.year, makeId: result.makeId, makeName: result.makeName,
+      && result.modelId !== undefined && result.modelName !== undefined && result.engineId !== undefined) {
+      selectVehicle({ year: result.year, makeId: result.makeId, makeName: result.makeName,
         modelId: result.modelId, modelName: result.modelName, engineId: result.engineId, engineName: result.engineName });
-    } else clearVehicle(false);
-    tree.current?.expandToVehicle(result);
+    } else {
+      setDraft(`Choosing ${result.label}. Choose an engine to apply this vehicle; the current results remain active.`);
+      tree.current?.expandToVehicle(result);
+    }
+  }
+  function clearFilters() {
+    void controller.clearFilters();
   }
   async function changeCart(action: () => Promise<unknown>, message?: string) {
     try { await action(); await refreshCart(); if (message) toast.success(message); }
@@ -113,23 +124,35 @@ export default function App() {
     onRemoveItem: (id: string | number) => void changeCart(() => cartApi.removeItem(id)),
     onCheckout: () => toast.info('Checkout is disabled during catalog testing.'),
   };
-  const changeFilter = (key: string, value: string) => { setFilters(current => ({ ...current, [key]: value })); setPage(1); };
-  const renderParts = () => <section ref={resultsSection} className="border-t border-border pt-3 min-w-0" data-testid="inline-parts" aria-label="Catalog results" aria-busy={isLoading}>
+  const changeFilter = (key: Exclude<keyof typeof query, 'year' | 'make' | 'model' | 'engine_base_id'>, value: string) => { void controller.transition({ type: 'change-query', key, value }); };
+  const pageHref = (number: number) => serializeNavigation({ ...state, filters: { ...state.filters, page: number } });
+  const renderParts = () => <section ref={resultsSection} id="catalog-results" tabIndex={-1} className="border-t border-border pt-3 min-w-0" data-testid="inline-parts" aria-label="Catalog results" aria-busy={isLoading}>
     <div className="mb-2">
-      <h2 className="font-semibold text-sm text-foreground">{searchQuery ? `Search: ${searchQuery}` : scopedCategory?.name ?? 'Parts'}</h2>
+      <h2 className="font-semibold text-sm text-foreground">{searchQuery ? `Search: ${searchQuery}` : scopedCategory?.name ?? 'Vehicle parts'}</h2>
       <p className="text-xs text-muted-foreground">Check engine, submodel, position and application notes before choosing a part.</p>
     </div>
     <div className="flex flex-wrap gap-3 mb-3 text-xs">
-      <label className="min-w-0 max-w-full">Brand<select aria-label="Brand" className="block border rounded p-1 max-w-48 bg-white" value={filters.brand ?? ''} onChange={event => changeFilter('brand', event.target.value)}><option value="">All brands</option>{data?.facets?.brands?.map(brand => <option key={brand.brand_id} value={brand.brand_id}>{brand.name}</option>)}</select></label>
-      {data?.vehicle_dimensions?.filter(dimension => DIMENSIONS.includes(dimension.dimension as typeof DIMENSIONS[number]) && dimension.dimension !== 'engine_base_id').map(dimension => <label className="min-w-0 max-w-full" key={dimension.dimension}>{dimension.label}<select aria-label={dimension.label} className="block border rounded p-1 max-w-full bg-white" value={filters[dimension.dimension] ?? ''} onChange={event => changeFilter(dimension.dimension, event.target.value)}><option value="">All — check application</option>{dimension.options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>)}
-      <label className="flex items-center gap-1"><input type="checkbox" checked={filters.in_stock_only === 'true'} onChange={event => changeFilter('in_stock_only', event.target.checked ? 'true' : '')} />In stock only</label>
-      <button className="underline" onClick={() => { setFilters({}); setPage(1); }}>Clear filters</button>
+      <label className="min-w-0 max-w-full">Brand<select id="catalog-brand" aria-label="Brand" className="block border rounded p-1 max-w-48 bg-white" value={filters.brand ?? ''} onChange={event => changeFilter('brand', event.target.value)}><option value="">All brands</option>{data?.facets?.brands?.map(brand => <option key={brand.brand_id} value={brand.brand_id}>{brand.name}</option>)}</select></label>
+      {data?.vehicle_dimensions?.filter(dimension => DIMENSIONS.includes(dimension.dimension as typeof DIMENSIONS[number]) && dimension.dimension !== 'engine_base_id').map(dimension => <label className="min-w-0 max-w-full" key={dimension.dimension}>{dimension.label}<select id={`catalog-${dimension.dimension}`} aria-label={dimension.label} className="block border rounded p-1 max-w-full bg-white" value={filters[dimension.dimension] ?? ''} onChange={event => changeFilter(dimension.dimension as typeof DIMENSIONS[number] & Exclude<typeof DIMENSIONS[number], 'engine_base_id'>, event.target.value)}><option value="">All — check application</option>{dimension.options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>)}
+      <label className="flex items-center gap-1"><input id="catalog-in-stock" type="checkbox" checked={filters.in_stock_only === 'true'} onChange={event => changeFilter('in_stock_only', event.target.checked ? 'true' : '')} />In stock only</label>
+      <button className="underline" onClick={clearFilters}>Clear filters</button>
     </div>
     {isLoading ? <div role="status" className="flex items-center justify-center h-40 gap-2"><Loader2 className="h-6 w-6 animate-spin" />Loading ERP parts…</div>
       : error ? <div role="alert" className="p-4 text-red-700">{error.message}<button onClick={refetch} className="underline ml-2">Retry</button></div>
       : data?.parts.length ? <><p className="mb-3 text-xs text-muted-foreground" role="status">{data.pagination.total_is_exact === false ? 'At least ' : ''}{data.pagination.total} matching parts · CAD</p><PartsTable parts={data.parts} onAddToCart={addToCart} /></>
       : <p className="p-8 text-sm text-muted-foreground">No parts match this vehicle and selection. Try another category or remove a filter.</p>}
-    {data && <div className="flex justify-center items-center gap-4 my-4 text-sm"><Button variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous</Button><span>Page {page}</span><Button variant="outline" disabled={!data.pagination.has_more || page >= 100} onClick={() => setPage(page + 1)}>Next</Button></div>}
+    {data && <div className="flex justify-center items-center gap-4 my-4 text-sm">
+      {page > 1 ? <a id="catalog-previous" className={buttonVariants({ variant: 'outline' })} href={pageHref(page - 1)} onClick={event => {
+        if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault(); changeFilter('page', String(page - 1));
+      }}>Previous</a> : <Button variant="outline" disabled>Previous</Button>}
+      <span>Page {page}</span>
+      {data.pagination.has_more && page < 100 ? <a id="catalog-next" className={buttonVariants({ variant: 'outline' })} href={pageHref(page + 1)} onClick={event => {
+        if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault(); changeFilter('page', String(page + 1));
+      }}>Next</a> : <Button variant="outline" disabled>Next</Button>}
+    </div>}
+
   </section>;
 
   return <div className="h-dvh flex flex-col bg-background overflow-hidden">
@@ -146,7 +169,10 @@ export default function App() {
         <Breadcrumb aria-label="Selected vehicle and category" className="min-w-0 flex-1 basis-full lg:basis-auto">
           <BreadcrumbList className="text-sm gap-x-1 gap-y-0">
             <BreadcrumbItem><span className="font-semibold text-foreground text-xs">Current vehicle:</span></BreadcrumbItem>
-            <BreadcrumbItem><BreadcrumbLink asChild><button className="py-1 underline underline-offset-2" onClick={showCatalog}>Part Catalog</button></BreadcrumbLink></BreadcrumbItem>
+            <BreadcrumbItem><BreadcrumbLink asChild><a href="/?scope=all" className="py-1 underline underline-offset-2" onClick={event => {
+              if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault(); showCatalog();
+            }}>Part Catalog</a></BreadcrumbLink></BreadcrumbItem>
             {[{ label: String(vehicleContext.year), target: 'makes' as const },
               { label: vehicleContext.makeName, target: 'models' as const },
               { label: vehicleContext.modelName, target: 'engines' as const },
@@ -168,21 +194,32 @@ export default function App() {
               <Button size="sm" variant="outline" onClick={() => returnTo('engines')}>Change engine</Button>
               <Button size="sm" variant="outline" onClick={() => returnTo('years')}>Change vehicle</Button>
             </div>
-            <p className="max-w-sm pb-2">{vehicleNotice ? 'Current choice applies for this visit.' : 'Vehicle saved for your next visit.'} Browse without changing it; choose another engine to switch.</p>
+            <p className="max-w-sm pb-2">Current choice applies for this visit. Explicitly choosing a vehicle saves it when browser storage is available. Browse without changing it; choose another engine to switch.</p>
           </details>
           <Button size="sm" variant="outline" className="min-h-9" onClick={() => clearVehicle()}>Clear vehicle</Button>
         </div>
       </div>}
       {vehicleNotice && <p role="status" className="w-full text-foreground" data-testid="vehicle-storage-notice">
-        {vehicleNotice} <button className="underline" onClick={() => activeVehicle ? rememberVehicle(activeVehicle) : clearVehicle(false)}>Retry {activeVehicle ? 'saving vehicle' : 'clearing saved vehicle'}</button>
+        {vehicleNotice} <button className="underline" onClick={() => activeVehicle ? void controller.navigate(state, 'remember') : clearVehicle()}>Retry {activeVehicle ? 'saving vehicle' : 'clearing saved vehicle'}</button>
       </p>}
-      {!vehicleContext && <span className="font-semibold text-foreground" role="status">All vehicles. Select a vehicle to narrow results.</span>}
+      {snapshot.status === 'ready' && !vehicleContext && <span className="font-semibold text-foreground" role="status">All vehicles. Select a vehicle to narrow results.</span>}
     </div>
     <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
-      <main className="flex-1 min-w-0 overflow-auto p-3">
-        {searchQuery && <div className="mb-6">{renderParts()}<button className="text-sm underline my-3" onClick={() => textSearch('')}>Return to vehicle catalog</button></div>}
+      <main ref={main} id="catalog-main" tabIndex={-1} className="flex-1 min-w-0 overflow-auto p-3"
+        onScroll={() => controller.savePresentation()} onFocusCapture={() => controller.savePresentation()}>
+        {snapshot.status === 'resolving' && <p role="status">Resolving catalog URL…</p>}
+        {snapshot.recovery && <div role="alert" data-testid="navigation-recovery" className="p-3 text-sm">
+          <p>{snapshot.recovery.message}</p><button className="underline mr-3" onClick={() => void controller.retry()}>Retry selection</button>
+          <a href="/?scope=all" onClick={event => { if (!event.button && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); showCatalog(); } }}>Part Catalog</a>
+        </div>}
+        {!!listing?.unverified.length && <p role="status" data-testid="unverified-filters" className="mb-2 text-xs">
+          Some saved filters could not be verified ({listing.unverified.map(key => `${key}=${query[key as keyof typeof query]}`).join(', ')}). They still narrow this search; check application notes.
+          {' '}<button className="underline" onClick={clearFilters}>Clear unverified filters</button>
+        </p>}
+        {draft && <p role="status" className="mb-2 text-xs">{draft} <button className="underline" onClick={() => setDraft('')}>Cancel draft</button></p>}
+        {listing && showResults && !inlineResults && <div className="mb-6">{renderParts()}{searchQuery && <button className="text-sm underline my-3" onClick={() => textSearch('')}>Return to vehicle catalog</button>}</div>}
         <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleSelect={selectVehicle} activeVehicle={activeVehicle} selectedFitment={selectedFitment}
-          renderPartsInline={() => !searchQuery && selectedFitment ? renderParts() : null} />
+          onDisclosureChange={() => controller.savePresentation()} renderPartsInline={() => inlineResults ? renderParts() : null} />
       </main>
       <aside className="hidden lg:block" aria-label="Quick Cart"><RightCartPanel {...cartProps} /></aside>
     </div>

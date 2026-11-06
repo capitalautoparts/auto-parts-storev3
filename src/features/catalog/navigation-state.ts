@@ -1,4 +1,4 @@
-// Inactive URL contract. No browser, storage, network or history access.
+// Pure URL contract used by the active browser adapter. No browser/storage access.
 import { changeQuery, DIMENSIONS, MARKET, QUERY_KEYS } from './model.ts';
 import type { Query } from './model.ts';
 import { productPath, productSku } from '../../../server/product-data.ts';
@@ -20,7 +20,7 @@ interface ListingState {
   market: typeof MARKET;
   availability: 'all' | 'true';
   text: { original: string; residual: string };
-  category?: { kind: 'category-slug'; slug: string };
+  category?: { kind: 'category-slug'; slug: string; parentSlug?: string };
   partType?: ParsedPcdbPartType;
   filters: { brand?: string; sort: 'relevance' | 'price' | 'availability'; sortOrder: 'asc' | 'desc'; page: number };
 }
@@ -51,7 +51,7 @@ export type NavigationParseResult =
   | { status: 'invalid'; explicit: true; issues: NavigationIssue[] }
   | { status: 'parsed'; state: ParsedNavigationState };
 
-const EXTRA_KEYS = ['scope', 'original_q', 'market'] as const;
+const EXTRA_KEYS = ['scope', 'original_q', 'market', 'category_parent'] as const;
 const ALLOWED_KEYS = new Set<string>([...QUERY_KEYS, ...EXTRA_KEYS]);
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const ID = /^[1-9]\d{0,8}$/;
@@ -60,8 +60,17 @@ const invalid = (code: NavigationIssue['code'], key?: string): NavigationParseRe
 
 /** Accept only root query URLs and the existing product path cohort. No origin inference. */
 export function parseNavigationUrl(input: string): NavigationParseResult {
-  if (!input.startsWith('/') || input.startsWith('//') || input.includes('\\') || input.includes('#') || CONTROL.test(input)) return invalid('path');
+  if (!input.startsWith('/') || input.startsWith('//') || input.includes('\\') || CONTROL.test(input)) return invalid('path');
   if (input === '/') return { status: 'absent' };
+  // Existing product documents use pathname identity; query/fragment are not
+  // listing state, return destinations, scope or fitment pagination.
+  const productPathname = input.split(/[?#]/, 1)[0];
+  if (productPathname.startsWith('/products/')) {
+    try { decodeURIComponent(productPathname); } catch { return invalid('encoding'); }
+    const sku = productSku(productPathname);
+    return sku ? { status: 'parsed', state: { kind: 'product', market: MARKET, product: { kind: 'sku', sku } } } : invalid('path');
+  }
+  if (input.includes('#')) return invalid('path');
   try { decodeURIComponent(input.replace(/\+/g, ' ')); } catch { return invalid('encoding'); }
   const question = input.indexOf('?');
   const path = question < 0 ? input : input.slice(0, question);
@@ -91,7 +100,10 @@ export function parseNavigationUrl(input: string): NavigationParseResult {
   if (get('in_stock_only') && !['all', 'true'].includes(get('in_stock_only')!)) return invalid('value', 'in_stock_only');
   if (get('sort') && !['price', 'availability', 'relevance'].includes(get('sort')!)) return invalid('value', 'sort');
   if (get('sort_order') && !['asc', 'desc'].includes(get('sort_order')!)) return invalid('value', 'sort_order');
-  if (get('category') && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(get('category')!)) return invalid('value', 'category');
+  for (const key of ['category', 'category_parent']) {
+    if (get(key) && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(get(key)!)) return invalid('value', key);
+  }
+  if (get('category_parent') && !get('category')) return invalid('value', 'category_parent');
   if (get('q') && get('q')!.trim().length < 2) return invalid('value', 'q');
   for (const key of ['make', 'model']) {
     if (get(key) && get(key) !== get(key)!.trim()) return invalid('value', key);
@@ -112,7 +124,7 @@ export function parseNavigationUrl(input: string): NavigationParseResult {
     kind: residual ? 'search' : 'catalog', scope, market: MARKET,
     availability: (get('in_stock_only') ?? 'all') as ListingState['availability'],
     text: { original: get('original_q') ?? residual, residual },
-    ...(get('category') ? { category: { kind: 'category-slug', slug: get('category')! } as const } : {}),
+    ...(get('category') ? { category: { kind: 'category-slug', slug: get('category')!, ...(get('category_parent') ? { parentSlug: get('category_parent')! } : {}) } as const } : {}),
     ...(get('part_type') ? { partType: { kind: 'unresolved-pcdb', id: get('part_type')! } as const } : {}),
     filters: { ...(get('brand') ? { brand: get('brand')! } : {}),
       sort: (get('sort') ?? 'relevance') as ListingState['filters']['sort'],
@@ -120,7 +132,7 @@ export function parseNavigationUrl(input: string): NavigationParseResult {
   } };
 }
 
-function listingQuery(state: ListingNavigationState): Query {
+export function listingQuery(state: ListingNavigationState): Query {
   const query: Query = {};
   if (state.scope.kind === 'vehicle') {
     const vehicle = state.scope.vehicle;
@@ -152,6 +164,7 @@ export function serializeNavigation(state: ParsedNavigationState): string {
       || (key === 'sort' && value === 'relevance') || (key === 'sort_order' && value === 'asc')) continue;
     params.set(key, value);
   }
+  if (state.category?.parentSlug) params.set('category_parent', state.category.parentSlug);
   if (state.text.original !== state.text.residual) params.set('original_q', state.text.original);
   const result = `/?${params}`;
   if (parseNavigationUrl(result).status !== 'parsed') throw new Error('Invalid navigation state.');
@@ -183,13 +196,27 @@ export type NavigationTransition =
   | { type: 'change-query'; key: Exclude<keyof Query, 'year' | 'make' | 'model' | 'engine_base_id'>; value: string }
   | { type: 'replace-vehicle'; vehicle: VehicleSelection }
   | { type: 'replace-engine'; engineId: string }
+  | { type: 'catalog-root' }
   | { type: 'clear-vehicle' };
 export interface TransitionResult { navigation: NavigationParseResult; memory: 'unchanged' | 'remove' }
 
+/** A category choice within the same committed YMM/engine retains configuration
+ * constraints; choosing a different tree vehicle applies replacement policy. */
+export function commitCategorySelection(state: ListingNavigationState, vehicle: VehicleSelection,
+  category: NonNullable<ListingNavigationState['category']>): ListingNavigationState {
+  const same = state.scope.kind === 'vehicle' && state.scope.vehicle.year === vehicle.year
+    && state.scope.vehicle.make === vehicle.make && state.scope.vehicle.model === vehicle.model
+    && state.scope.vehicle.dimensions.engine_base_id === vehicle.dimensions.engine_base_id;
+  return { kind: 'catalog', scope: { kind: 'vehicle', vehicle: same && state.scope.kind === 'vehicle' ? state.scope.vehicle : vehicle },
+    market: MARKET, category, text: { original: '', residual: '' },
+    availability: same ? state.availability : 'all', filters: same ? { ...state.filters, brand: undefined, page: 1 }
+      : { sort: 'relevance', sortOrder: 'asc', page: 1 } };
+}
+
 /** Clear stale dependencies before an adapter resolves/reissues a request. No UI wiring. */
 export function transitionNavigation(state: ListingNavigationState, action: NavigationTransition): TransitionResult {
-  if (action.type === 'clear-vehicle') {
-    return { navigation: parseNavigationUrl('/?scope=all'), memory: 'remove' };
+  if (action.type === 'clear-vehicle' || action.type === 'catalog-root') {
+    return { navigation: parseNavigationUrl('/?scope=all'), memory: action.type === 'clear-vehicle' ? 'remove' : 'unchanged' };
   }
   if (action.type === 'replace-vehicle' || action.type === 'replace-engine') {
     if (action.type === 'replace-engine' && state.scope.kind !== 'vehicle') {
@@ -207,6 +234,7 @@ export function transitionNavigation(state: ListingNavigationState, action: Navi
   if (action.key === 'part_type') delete query.brand;
   const params = new URLSearchParams(query as Record<string, string>);
   if (state.scope.kind === 'all') params.set('scope', 'all');
+  if (action.key !== 'category' && state.category?.parentSlug && query.category) params.set('category_parent', state.category.parentSlug);
   // Config filter edits retain all other selections for external revalidation.
   if (!['q', 'category', 'part_type'].includes(action.key) && state.text.original !== state.text.residual) {
     params.set('original_q', state.text.original);
@@ -228,16 +256,33 @@ export interface CatalogBackground {
   href: string;
   scroll: { x: number; y: number };
   focusKey?: string;
+  focusIndex?: number;
+  focusControl?: 'image' | 'title' | 'details';
+  disclosure?: TreeDisclosure;
 }
 
-/** Future history payload, kept outside product identity/canonical URL. Not wired to history. */
+export interface TreeDisclosure { years: number[]; makes: string[]; models: string[]; engines: string[]; categories: string[] }
+export function parseTreeDisclosure(input: unknown): TreeDisclosure | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const value = input as TreeDisclosure;
+  if (!Array.isArray(value.years) || value.years.length > 250 || !value.years.every(year => Number.isInteger(year) && year >= 1900 && year <= 2100)) return undefined;
+  if (!(['makes', 'models', 'engines', 'categories'] as const).every(key => Array.isArray(value[key]) && value[key].length <= 500 && value[key].every(item => typeof item === 'string' && /^[0-9-]{1,100}$/.test(item)))) return undefined;
+  return { years: [...value.years], makes: [...value.makes], models: [...value.models], engines: [...value.engines], categories: [...value.categories] };
+}
+
+/** Presentation payload, kept outside product identity/canonical URL. */
 export function parseCatalogBackground(input: unknown): CatalogBackground | null {
   if (!input || typeof input !== 'object') return null;
   const value = input as Partial<CatalogBackground>;
   const href = safeCatalogReturnPath(value.href);
   if (value.version !== 1 || !href || !value.scroll
     || ![value.scroll.x, value.scroll.y].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)
-    || (value.focusKey !== undefined && (typeof value.focusKey !== 'string' || !value.focusKey || value.focusKey.length > 120 || CONTROL.test(value.focusKey)))) return null;
-  return { version: 1, href, scroll: { x: value.scroll.x, y: value.scroll.y },
+    || (value.focusKey !== undefined && (typeof value.focusKey !== 'string' || !value.focusKey || value.focusKey.length > 600 || CONTROL.test(value.focusKey)))) return null;
+  if (value.focusIndex !== undefined && (!Number.isInteger(value.focusIndex) || value.focusIndex < 0 || value.focusIndex > 20)) return null;
+  if (value.focusControl !== undefined && !['image', 'title', 'details'].includes(value.focusControl)) return null;
+  return { version: 1, href: value.href!, scroll: { x: value.scroll.x, y: value.scroll.y },
+    ...(parseTreeDisclosure(value.disclosure) ? { disclosure: parseTreeDisclosure(value.disclosure) } : {}),
+    ...(value.focusIndex !== undefined ? { focusIndex: value.focusIndex } : {}),
+    ...(value.focusControl !== undefined ? { focusControl: value.focusControl } : {}),
     ...(value.focusKey !== undefined ? { focusKey: value.focusKey } : {}) };
 }

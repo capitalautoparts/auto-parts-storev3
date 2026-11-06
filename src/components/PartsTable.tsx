@@ -89,6 +89,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                     >
                       <td className="p-2 md:p-3 md:w-16 align-top">
                         <a
+                          data-catalog-focus="image"
                           href={href}
                           onClick={event => followProduct(event, String(part.id))}
                           aria-label={`View ${part.brand} ${part.partNumber}`}
@@ -104,6 +105,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
 
                       <td className="p-2 md:p-3 md:w-40 min-w-0 align-top">
                         <a
+                          data-catalog-focus="title"
                           href={href}
                           onClick={event => followProduct(event, String(part.id))}
                           className="text-left hover:text-brand-navy transition-colors"
@@ -153,7 +155,7 @@ export function PartsTable({ parts, onAddToCart }: PartsTableProps) {
                             size="sm"
                             className="w-auto md:w-full"
                           >
-                            <a href={href} aria-disabled={!href} onClick={event => followProduct(event, String(part.id))}><Info className="h-4 w-4 mr-1" />
+                            <a data-catalog-focus="details" href={href} aria-disabled={!href} onClick={event => followProduct(event, String(part.id))}><Info className="h-4 w-4 mr-1" />
                             Details</a>
                           </Button>
                         </div>
