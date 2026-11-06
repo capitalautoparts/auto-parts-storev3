@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { catalogEnabled, createCatalogHandler, upstreamUrl } from '../server/catalog-proxy.ts';
+import { catalogEnabled, catalogGateway, createCatalogHandler, upstreamUrl } from '../server/catalog-proxy.ts';
 import { catalogFetch, changeQuery, priceLabel, readCart, searchParams } from '../src/features/catalog/model.ts';
 import type { Part } from '../src/features/catalog/model.ts';
 import { mapErpPart, decodeCart, vehicleApi, cartApi } from '../src/lib/erp-api.ts';
@@ -197,6 +197,68 @@ test('the eligible production deployment can only make GET requests to the fixed
     assert.equal(calls[0].url.pathname, '/api/erp/api/v1/vehicles/years');
     assert.equal(calls[0].init?.method ?? 'GET', 'GET');
     assert.equal(calls[0].init?.redirect, 'error');
+  } finally { server.close(); server.closeAllConnections(); }
+});
+
+test('upstream is selected only by the ROYS_ONPREM deploy target', () => {
+  assert.equal(catalogGateway({}).origin, 'https://staging.autrex.ca');
+  assert.equal(catalogGateway({ ROYS_ONPREM: 'true' }).origin, 'https://staging.autrex.ca');
+  assert.equal(catalogGateway({ ROYS_ONPREM: '1' }).origin, 'http://192.168.88.233');
+  const url = upstreamUrl('/?resource=years', catalogGateway({ ROYS_ONPREM: '1' }));
+  assert.equal(url.href, 'http://192.168.88.233/api/erp/api/v1/vehicles/years?vehicleType=light-duty');
+  assert.equal(upstreamUrl('/?resource=years').origin, 'https://staging.autrex.ca');
+});
+
+test('on-prem activation requires the flag and is never allowed on Vercel', () => {
+  const flag = { ROYS_CATALOG_PREVIEW_ENABLED: 'true' };
+  assert.equal(catalogEnabled({ ROYS_ONPREM: '1', ...flag }), true);
+  assert.equal(catalogEnabled({ ROYS_ONPREM: '1' }), false);
+  assert.equal(catalogEnabled({ ROYS_ONPREM: '1', ROYS_CATALOG_PREVIEW_ENABLED: 'TRUE' }), false);
+  assert.equal(catalogEnabled({ ROYS_ONPREM: 'true', ...flag }), false);
+  assert.equal(catalogEnabled({ ROYS_ONPREM: '1', VERCEL: '1', VERCEL_ENV: 'preview', ...flag }), false);
+  assert.equal(catalogEnabled({
+    ROYS_ONPREM: '1', VERCEL: '1', VERCEL_ENV: 'production', ...flag,
+    VERCEL_PROJECT_ID: 'prj_MDoqEvUIZHzv65GCFYxLE03xVt2p', VERCEL_GIT_COMMIT_REF: 'main',
+  }), false);
+});
+
+test('on-prem handler fetches only the LAN upstream and Vercel+on-prem is denied without calling it', async () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => { calls.push({ url: String(input), init }); return Response.json({ years: [2020] }); }) as typeof fetch;
+  const run = async (env: NodeJS.ProcessEnv) => {
+    const server = createServer(createCatalogHandler(fetcher, env)).listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address !== 'string');
+    try { return await fetch(`http://127.0.0.1:${address.port}/?resource=years`); }
+    finally { server.close(); server.closeAllConnections(); }
+  };
+  const ok = await run({ ROYS_ONPREM: '1', ROYS_CATALOG_PREVIEW_ENABLED: 'true' });
+  assert.equal(ok.status, 200);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'http://192.168.88.233/api/erp/api/v1/vehicles/years?vehicleType=light-duty');
+  assert.equal(calls[0].init?.redirect, 'error');
+  const denied = await run({ ROYS_ONPREM: '1', VERCEL: '1', VERCEL_ENV: 'preview', ROYS_CATALOG_PREVIEW_ENABLED: 'true' });
+  assert.equal(denied.status, 503);
+  assert.equal((await denied.json() as { code: string }).code, 'CATALOG_DEPLOYMENT_NOT_ALLOWED');
+  const missing = await run({ ROYS_ONPREM: '1' });
+  assert.equal((await missing.json() as { code: string }).code, 'CATALOG_FLAG_DISABLED');
+  assert.equal(calls.length, 1);
+});
+
+test('Vercel plus on-prem is denied even in local-development mode and never fetches', async () => {
+  assert.throws(() => catalogGateway({ ROYS_ONPREM: '1', VERCEL: '1' }));
+  let called = false;
+  const server = createServer(createCatalogHandler(async () => { called = true; return Response.json({}); },
+    { ROYS_ONPREM: '1', VERCEL: '1', ROYS_CATALOG_PREVIEW_ENABLED: 'true' }, true)).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/?resource=years`);
+    assert.equal(response.status, 503);
+    assert.equal((await response.json() as { code: string }).code, 'CATALOG_DEPLOYMENT_NOT_ALLOWED');
+    assert.equal(called, false);
   } finally { server.close(); server.closeAllConnections(); }
 });
 
