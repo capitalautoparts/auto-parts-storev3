@@ -5,7 +5,7 @@ import { PartsTable } from '@/components/PartsTable';
 import { RightCartPanel } from '@/components/RightCartPanel';
 import { TreeSidebar, type PartSelection, type TreeSidebarHandle, type VehicleExpansion } from '@/components/TreeSidebar';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { Fragment } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -167,17 +167,17 @@ export default function App() {
       </p>}
       {!vehicleContext && <span className="font-semibold text-foreground" role="status">All vehicles. Select a vehicle to narrow results.</span>}
     </div>
-    <div className="flex-1 flex flex-row overflow-hidden">
-      <main className="flex-1 min-w-0 overflow-auto p-4 pb-24 lg:pb-4">
+    <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
+      <main className="flex-1 min-w-0 overflow-auto p-4">
         {searchQuery && <div className="mb-6">{renderParts()}<button className="text-sm underline my-3" onClick={() => textSearch('')}>Return to vehicle catalog</button></div>}
         <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleSelect={selectVehicle} activeVehicle={activeVehicle} selectedFitment={selectedFitment}
           renderPartsInline={() => !searchQuery && selectedFitment ? renderParts() : null} />
       </main>
       <aside className="hidden lg:block" aria-label="Quick Cart"><RightCartPanel {...cartProps} /></aside>
     </div>
-    <div className="lg:hidden fixed bottom-4 right-4 z-50">
+    <div className="lg:hidden shrink-0 border-t border-border bg-background px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]" data-testid="mobile-cart-strip">
       <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
-        <SheetTrigger asChild><Button aria-label="Open Quick Cart" className="rounded-full h-14 w-14 bg-brand-accent shadow-lg hover:bg-brand-accent/90 relative"><ShoppingCart className="h-6 w-6" />{(cart?.items.length ?? 0) > 0 && <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-brand-gold text-brand-ink">{cart?.items.length}</Badge>}</Button></SheetTrigger>
+        <SheetTrigger aria-label="Open Quick Cart" className={buttonVariants({ className: 'h-11 w-full bg-brand-accent hover:bg-brand-accent/90' })}><ShoppingCart className="h-5 w-5" /><span>Quick Cart</span><Badge className="bg-brand-gold text-brand-ink">{cart?.items.length ?? 0} saved</Badge></SheetTrigger>
         <SheetContent side="right" className="w-full sm:max-w-md p-0 overflow-auto bg-white"><SheetHeader className="sr-only"><SheetTitle>Quick Cart</SheetTitle></SheetHeader><RightCartPanel {...cartProps} /></SheetContent>
       </Sheet>
     </div>
