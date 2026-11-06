@@ -13,7 +13,10 @@ and Firefox visual checks also run on VM511. Node 22 is required. Use the
 smallest relevant checks and do not duplicate active CI.
 
 The API is fixed to https://staging.autrex.ca/api/erp and allowlisted in
-server/catalog-proxy.ts. This existing public gateway reads ERP staging. Do not
+server/catalog-proxy.ts. This existing public gateway reads ERP staging.
+D1575 amendment: Vercel previews use the public gateway for design only; the
+on-prem staging runtime (non-secret ROYS_ONPREM=1, never on Vercel) uses the
+single fixed LAN upstream http://192.168.88.233/api/erp; no other upstreams. Do not
 add arbitrary upstreams, automatic alternate routes, or relay credentials to this
 repository. Reject gateway development-stub responses. Deployed
 ERP access requires VERCEL=1 and the non-secret ROYS_CATALOG_PREVIEW_ENABLED=true.
