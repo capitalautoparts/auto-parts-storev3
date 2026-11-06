@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { validSku } from './product-data.ts';
 
 const GATEWAY = new URL('https://staging.autrex.ca/api/erp');
 // D1575: single fixed LAN upstream (VM 453 nginx) for the on-prem staging runtime.
@@ -19,6 +20,8 @@ const routes: Record<string, { path: string; keys: string[]; required?: string[]
   categories: { path: '/taxonomy/categories', keys: [] },
   category: { path: '/taxonomy/categories', keys: ['slug'], required: ['slug'] },
   search: { path: '/search', keys: searchKeys },
+  product: { path: '/products', keys: ['sku'], required: ['sku'] },
+  'product-fitments': { path: '/products', keys: ['sku', 'page', 'limit'], required: ['sku'] },
 };
 
 export function catalogGateway(env: NodeJS.ProcessEnv = {}): URL {
@@ -42,7 +45,7 @@ export function upstreamUrl(input: string, base: URL = GATEWAY): URL {
     if (params.getAll(key).length !== 1 || (key !== 'resource' && !route.keys.includes(key))) {
       throw new Error('Unsupported catalog parameter.');
     }
-    if (!value.trim() || value.length > 120 || /[\u0000-\u001f]/.test(value)) throw new Error('Invalid catalog parameter.');
+    if (!value.trim() || value.length > (key === 'sku' ? 160 : 120) || /[\u0000-\u001f]/.test(value)) throw new Error('Invalid catalog parameter.');
     if (['year', 'page', 'limit', 'part_type', ...searchKeys.filter(k => k.endsWith('_id'))].includes(key)
       && !/^[1-9]\d{0,8}$/.test(value)) throw new Error('Invalid numeric parameter.');
   }
@@ -66,7 +69,15 @@ export function upstreamUrl(input: string, base: URL = GATEWAY): URL {
   }
   const url = new URL(base);
   url.pathname += `/api/v1${route.path}`;
-  if (resource === 'category') {
+  if (resource === 'product' || resource === 'product-fitments') {
+    const sku = params.get('sku');
+    if (!validSku(sku)) throw new Error('Invalid product SKU.');
+    url.pathname += `/${encodeURIComponent(sku)}${resource === 'product-fitments' ? '/fitments' : ''}`;
+    if (resource === 'product-fitments') {
+      url.searchParams.set('page', params.get('page') ?? '1');
+      url.searchParams.set('limit', params.get('limit') ?? '24');
+    }
+  } else if (resource === 'category') {
     const slug = params.get('slug')!;
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new Error('Invalid category.');
     url.pathname += `/${slug}`;
@@ -91,63 +102,75 @@ export function catalogEnabled(env: NodeJS.ProcessEnv): boolean {
     && env.VERCEL_GIT_COMMIT_REF === 'main';
 }
 
+export async function readCatalog(input: string, fetcher: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, localDevelopment = false): Promise<{ status: number; body: unknown }> {
+  const send = (status: number, body: unknown) => ({ status, body });
+  let gateway: URL;
+  try { gateway = catalogGateway(env); }
+  catch { return send(503, { error: 'ERP staging catalog access has not been enabled for this deployment.', code: 'CATALOG_DEPLOYMENT_NOT_ALLOWED' }); }
+
+  if (!localDevelopment && !catalogEnabled(env)) return send(503, {
+    error: 'ERP staging catalog access has not been enabled for this deployment.',
+    code: env.ROYS_CATALOG_PREVIEW_ENABLED === 'true' ? 'CATALOG_DEPLOYMENT_NOT_ALLOWED' : 'CATALOG_FLAG_DISABLED',
+  });
+  let url: URL;
+  try { url = upstreamUrl(input, gateway); }
+  catch (error) { return send(400, { error: (error as Error).message }); }
+  try {
+    const response = await fetcher(url, {
+      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(15_000), redirect: 'error',
+    });
+    if (response.headers.get('x-erp-stub') === '1') {
+      await response.body?.cancel();
+      return send(502, { error: 'The staging catalog is temporarily unavailable.' });
+    }
+    const refused = response.status === 403 || response.headers.get('cf-mitigated') === 'challenge';
+    if (!response.ok || refused) {
+      const rayId = response.headers.get('cf-ray');
+      await response.body?.cancel();
+      const missingProduct = response.status === 404 && ['product', 'product-fitments'].includes(new URL(input, 'http://catalog.local').searchParams.get('resource') ?? '');
+      return send(missingProduct ? 404 : response.status === 429 ? 429 : 502, {
+        error: missingProduct ? 'Product not found.' : refused
+          ? 'Staging refused the catalog request. Share this reference with support.'
+          : 'The staging catalog is temporarily unavailable.',
+        ...(refused && rayId ? { reference: rayId } : {}),
+        ...(refused ? { code: 'CATALOG_UPSTREAM_REFUSED' } : {}),
+      });
+    }
+    if (!response.headers.get('content-type')?.includes('application/json') || !response.body) throw new Error('Invalid response');
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > 2_000_000) throw new Error('Response too large');
+        chunks.push(value);
+      }
+    } finally { await reader.cancel(); }
+    const payload: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return send(200, payload);
+  } catch {
+    return send(502, { error: 'The staging catalog could not be reached. Please try again.' });
+  }
+}
+
 export function createCatalogHandler(fetcher: typeof fetch = fetch, env: NodeJS.ProcessEnv = process.env, localDevelopment = false) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');
-    const send = (status: number, body: unknown) => { res.statusCode = status; res.end(JSON.stringify(body)); };
     if (req.method !== 'GET') {
       res.setHeader('Allow', 'GET');
-      return send(405, { error: 'The catalog accepts read-only requests.' });
+      res.statusCode = 405;
+      return res.end(JSON.stringify({ error: 'The catalog accepts read-only requests.' }));
+
     }
-    let gateway: URL;
-    try { gateway = catalogGateway(env); }
-    catch {
-      return send(503, { error: 'ERP staging catalog access has not been enabled for this deployment.', code: 'CATALOG_DEPLOYMENT_NOT_ALLOWED' });
-    }
-    if (!localDevelopment && !catalogEnabled(env)) return send(503, {
-      error: 'ERP staging catalog access has not been enabled for this deployment.',
-      code: env.ROYS_CATALOG_PREVIEW_ENABLED === 'true' ? 'CATALOG_DEPLOYMENT_NOT_ALLOWED' : 'CATALOG_FLAG_DISABLED',
-    });
-    let url: URL;
-    try { url = upstreamUrl(req.url ?? '', gateway); }
-    catch (error) { return send(400, { error: (error as Error).message }); }
-    try {
-      const response = await fetcher(url, {
-        headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
-        signal: AbortSignal.timeout(15_000), redirect: 'error',
-      });
-      if (response.headers.get('x-erp-stub') === '1') {
-        await response.body?.cancel();
-        return send(502, { error: 'The staging catalog is temporarily unavailable.' });
-      }
-      if (!response.ok) {
-        const rayId = response.headers.get('cf-ray');
-        await response.body?.cancel();
-        return send(response.status === 429 ? 429 : 502, {
-          error: response.status === 403 ? 'Staging refused the catalog request. Share this reference with support.' : 'The staging catalog is temporarily unavailable.',
-          ...(response.status === 403 && rayId ? { reference: rayId } : {}),
-        });
-      }
-      if (!response.headers.get('content-type')?.includes('application/json') || !response.body) throw new Error('Invalid response');
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          size += value.byteLength;
-          if (size > 2_000_000) throw new Error('Response too large');
-          chunks.push(value);
-        }
-      } finally { await reader.cancel(); }
-      const payload: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      return send(200, payload);
-    } catch {
-      return send(502, { error: 'The staging catalog could not be reached. Please try again.' });
-    }
+    const result = await readCatalog(req.url ?? '', fetcher, env, localDevelopment);
+    res.statusCode = result.status;
+    res.end(JSON.stringify(result.body));
   };
 }
 

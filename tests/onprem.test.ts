@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createCatalogHandler } from '../server/catalog-proxy.ts';
 import { createOnPremServer, resolveListenOptions } from '../server/onprem-server.ts';
+import { createProductPageHandler } from '../server/product-page.ts';
 
 test('on-prem server serves /healthz, rejects other paths and methods, and proxies only /api/catalog', async () => {
   const calls: string[] = [];
@@ -31,6 +32,32 @@ test('listen options are loopback-only with a validated port', () => {
   assert.deepEqual(resolveListenOptions({ HOST: '::1', PORT: '65535' }), { host: '::1', port: 65535 });
   for (const HOST of ['0.0.0.0', '192.168.88.10', '::', 'example.com']) assert.throws(() => resolveListenOptions({ HOST }));
   for (const PORT of ['0', '65536', '-1', '3.5', 'abc', '1e3', '99999999']) assert.throws(() => resolveListenOptions({ PORT }));
+});
+
+test('on-prem product HTML uses the fixed LAN with normal gates and leaves arbitrary routes closed', async () => {
+  const sku = 'DVNJ_ALD1212M', calls: string[] = [];
+  const fetcher: typeof fetch = async input => {
+    calls.push(String(input));
+    return Response.json({ product: { sku, id: sku, name: 'Brake pad', brand_name: 'AGNA', part_number: 'ALD1212M' } });
+  };
+  const shell = '<html><head><title>Catalog</title><meta name="description" content="Catalog"><meta name="robots" content="noindex, nofollow"></head><body><div id="root"></div></body></html>';
+  for (const enabled of [false, true]) {
+    const env = { ROYS_ONPREM: '1', ROYS_CATALOG_PREVIEW_ENABLED: enabled ? 'true' : 'false' };
+    const server = createOnPremServer(createCatalogHandler(fetcher, env), createProductPageHandler(async () => shell, fetcher, env)).listen(0, '127.0.0.1');
+    await once(server, 'listening'); const address = server.address(); assert.ok(address && typeof address !== 'string');
+    const origin = `http://127.0.0.1:${address.port}`;
+    try {
+      const response = await fetch(`${origin}/products/${sku}`);
+      assert.equal(response.status, enabled ? 200 : 503);
+      assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow');
+      if (enabled) assert.match(await response.text(), /ERP SKU: DVNJ_ALD1212M/);
+      assert.equal((await fetch(`${origin}/products/${sku}`, { method: 'POST' })).status, 405);
+      assert.equal((await fetch(`${origin}/products/${sku}%2fetc`)).status, 400);
+      assert.equal((await fetch(`${origin}/arbitrary`)).status, 404);
+      assert.equal(calls.length, enabled ? 1 : 0);
+    } finally { server.close(); server.closeAllConnections(); }
+  }
+  assert.deepEqual(calls, ['http://192.168.88.233/api/erp/api/v1/products/DVNJ_ALD1212M']);
 });
 
 test('on-prem server rejects HEAD/OPTIONS, traversal and double-slash paths, and upstream stub/redirect responses', async () => {

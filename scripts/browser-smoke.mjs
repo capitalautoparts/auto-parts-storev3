@@ -216,6 +216,7 @@ try {
   };
   await guarded(page.goto(origin));
   await guarded(page.getByRole('img', { name: 'roy’s auto' }).first().waitFor());
+
   await guarded(page.getByTestId('vehicle-tree').getByRole('button', { name: '2020', exact: true }).waitFor());
   await page.getByRole('button', { name: 'Account', exact: true }).filter({ visible: true }).click();
   await page.getByText('Accounts are not enabled during catalog testing.', { exact: true }).waitFor();
@@ -240,7 +241,7 @@ try {
   report.ald1212mCadPrice = aldPrice;
   const row = page.locator('[data-part-id="DVNJ_ALD1212M"]');
   const rowAvailability = await row.getByTestId('part-availability').textContent();
-  await row.getByRole('button', { name: 'Details', exact: true }).click();
+  await row.getByRole('link', { name: 'Details', exact: true }).click();
   assert.ok((await page.getByRole('dialog').getByTestId('part-availability').textContent()).startsWith(rowAvailability));
   await page.getByRole('tab', { name: 'Fitments', exact: true }).click();
   assert.match(await page.getByRole('dialog').textContent(), /Application notes/);

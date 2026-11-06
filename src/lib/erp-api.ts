@@ -1,6 +1,7 @@
 import { catalogFetch, safeStorage, saveStorage } from '../features/catalog/model.ts';
 import type { Part as ErpPart, SearchResult, Category as ErpCategory } from '../features/catalog/model.ts';
 import type { VehicleYear, VehicleMake, VehicleModel, VehicleEngine, Category, Part, Cart, VehicleSearchResult, VehicleContext } from './api.ts';
+import { mapProduct, mapProductFitments, validSku } from '../../server/product-data.ts';
 
 const params = (values: Record<string, string | number | undefined>) => new URLSearchParams(
   Object.entries(values).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]),
@@ -102,6 +103,14 @@ export function mapErpPart(raw: ErpPart): Part {
 
 const knownParts = new Map<string | number, Part>();
 export const partsApi = {
+  async getProduct(sku: string): Promise<Part> {
+    if (!validSku(sku)) throw new Error('Invalid product SKU.');
+    return mapProduct(await catalogFetch<unknown>('product', params({ sku })), sku);
+  },
+  async getFitments(sku: string, page = 1) {
+    if (!validSku(sku)) throw new Error('Invalid product SKU.');
+    return mapProductFitments(await catalogFetch<unknown>('product-fitments', params({ sku, page, limit: 24 })), sku);
+  },
   async search({ q, category, vehicle, page = 1, filters = {} }: { q?: string; category?: Category; vehicle?: VehicleContext | null; page?: number; filters?: Record<string, string> }) {
     const query = params({ q, category: category?.slug, year: vehicle?.year, make: vehicle?.makeName,
       model: vehicle?.modelName, engine_base_id: vehicle?.engineId || undefined, page,

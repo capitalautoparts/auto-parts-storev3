@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from '@/components/Header';
+import { ProductRoute } from '@/components/ProductRoute';
 import { PartsTable } from '@/components/PartsTable';
 import { RightCartPanel } from '@/components/RightCartPanel';
 import { TreeSidebar, type PartSelection, type TreeSidebarHandle, type VehicleExpansion } from '@/components/TreeSidebar';
@@ -99,6 +100,7 @@ export default function App() {
 
   return <div className="h-dvh flex flex-col bg-background overflow-hidden">
     <Toaster />
+    <ProductRoute onAddToCart={addToCart} />
     <Header cartItemCount={cart?.items.reduce((count, item) => count + item.quantity, 0) ?? 0} searchQuery={searchQuery}
       onSearchChange={textSearch} onVehicleSearch={vehicleSearch} onPartSearch={result => textSearch(result.partNumber ?? '')}
       onCategorySearch={result => tree.current?.expandToCategory(result)} vehicleContext={vehicleContext}
