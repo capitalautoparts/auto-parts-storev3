@@ -282,12 +282,14 @@ test('saved cart rejects malformed, duplicate and unsafe quantities; missing CAD
   assert.match(priceLabel({ pricing: { price: 28, currency: 'CAD' } } as Part), /28\.00/);
 });
 
-test('original UI adapter preserves ERP identity, application notes and missing-price semantics', () => {
-  const raw = { sku: 'BRAND_A_NUMBER_1', name: 'Brake pad', brand_name: 'Brand A', part_number: 'NUMBER_1', pricing: { price: null, currency: 'CAD' }, core_charge: { amount: 12 }, sellablePackQuantity: 2, fitment_qualifiers: [{ name: 'Position', value: 'Rear' }], applications: [{ submodel: 'LE', position: 'Rear', notes: ['Manual parking brake only'] }] } as Part;
+test('ERP adapter preserves application qualifiers and summary without inventing confirmed fitments', () => {
+  const raw = { sku: 'BRAND_A_NUMBER_1', name: 'Brake pad', brand_name: 'Brand A', part_number: 'NUMBER_1', pricing: { price: null, currency: 'CAD' }, core_charge: { amount: 12 }, sellablePackQuantity: 2, fitment_summary: 'Fits 2020 Toyota Camry', fitment_qualifiers: [{ name: 'Position', value: 'Rear' }], applications: [{ submodel: 'LE', engine: null, position: 'Rear', notes: ['Verify rotor diameter'], qualifiers: ['For models with electronic parking brake'] }] } as Part;
   const part = mapErpPart(raw);
   assert.equal(part.id, raw.sku); assert.equal(part.price, null); assert.equal(part.tier, undefined);
   assert.equal(part.coreCharge, 12); assert.equal(part.packQuantity, 2);
-  assert.match(part.applicationNotes![0], /LE.*Rear.*Manual parking brake/);
+  assert.match(part.applicationNotes![0], /LE.*Rear.*Verify rotor diameter.*electronic parking brake/);
+  assert.equal(part.fitmentSummary, raw.fitment_summary);
+  assert.deepEqual(part.fitments, []);
   assert.notEqual(mapErpPart({ ...raw, sku: 'BRAND_B_NUMBER_1' }).id, part.id);
   const item = { id: part.id, partId: part.id, quantity: 2, part };
   assert.deepEqual(decodeCart(JSON.stringify({ items: [item, item, { ...item, quantity: -1 }] })).items, JSON.parse(JSON.stringify([item])));

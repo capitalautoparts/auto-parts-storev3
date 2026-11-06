@@ -70,7 +70,7 @@ export function ProductDetailModal({
             <DialogTitle className="flex items-center gap-3 text-white">
               <Package className="h-5 w-5" />
               <span className="font-semibold">{part.brand} {part.partNumber}</span>
-              <Badge
+              {part.tier && <Badge
                 className={cn(
                   "text-xs font-bold px-2 py-0.5 rounded",
                   tier.bgColor,
@@ -78,7 +78,7 @@ export function ProductDetailModal({
                 )}
               >
                 {tier.label}
-              </Badge>
+              </Badge>}
             </DialogTitle>
             <DialogDescription className="text-white/90 text-xs">Review all application conditions; a vehicle match is not a fitment guarantee.</DialogDescription>
           </DialogHeader>
@@ -238,7 +238,12 @@ export function ProductDetailModal({
               </TabsContent>
 
               <TabsContent value="fitments" className="m-0 p-0 bg-white">
-                <div className="p-3 text-sm"><strong>Application notes</strong>{part.applicationNotes?.length ? part.applicationNotes.map((note, index) => <p className="py-2 border-b" key={index}>{note}</p>) : <p>No application notes supplied. Verify fitment before purchase.</p>}</div>
+                <div className="p-3 text-sm">
+                  {part.fitmentSummary && <p className="font-semibold mb-2">{part.fitmentSummary}</p>}
+                  <strong>Application notes</strong>
+                  <p className="text-xs text-muted-foreground py-2">The supplied applications may include other engine or submodel variants. Match your vehicle to the conditions below.</p>
+                  {part.applicationNotes?.length ? part.applicationNotes.map((note, index) => <p className="py-2 border-b" key={index}>{note}</p>) : <p>No application notes supplied. Verify fitment before purchase.</p>}
+                </div>
                 {part.fitments && part.fitments.length > 0 ? (
                   <table className="w-full text-sm">
                     <thead className="bg-gray-100 sticky top-0">
@@ -269,7 +274,7 @@ export function ProductDetailModal({
                 ) : (
                   <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground bg-white">
                     <Info className="h-4 w-4" />
-                    <span className="text-sm">No fitment information available</span>
+                    <span className="text-sm">A complete vehicle fitment list has not been supplied.</span>
                   </div>
                 )}
               </TabsContent>
