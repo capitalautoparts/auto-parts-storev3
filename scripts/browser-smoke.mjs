@@ -215,7 +215,8 @@ try {
     return response;
   };
   await guarded(page.goto(origin));
-  await guarded(page.getByRole('img', { name: 'roy’s auto', exact: true }).waitFor());
+  await guarded(page.getByRole('img', { name: 'roy’s auto' }).first().waitFor());
+
   await guarded(page.getByTestId('vehicle-tree').getByRole('button', { name: '2020', exact: true }).waitFor());
   await page.getByRole('button', { name: 'Account', exact: true }).filter({ visible: true }).click();
   await page.getByText('Accounts are not enabled during catalog testing.', { exact: true }).waitFor();

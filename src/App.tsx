@@ -111,7 +111,7 @@ export default function App() {
       {vehicleContext && <span>{vehicleContext.year} {vehicleContext.makeName} {vehicleContext.modelName}</span>}
     </div>
     <div className="flex-1 flex flex-row overflow-hidden">
-      <main className="flex-1 min-w-0 overflow-auto p-4">
+      <main className="flex-1 min-w-0 overflow-auto p-4 pb-24 lg:pb-4">
         {searchQuery && <div className="mb-6">{renderParts()}<button className="text-sm underline my-3" onClick={() => textSearch('')}>Return to vehicle catalog</button></div>}
         <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleExpand={expandVehicle}
           renderPartsInline={() => !searchQuery && selectedFitment ? renderParts() : null} />
