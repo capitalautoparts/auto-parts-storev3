@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Header } from '@/components/Header';
 import { ProductRoute } from '@/components/ProductRoute';
 import { PartsTable } from '@/components/PartsTable';
@@ -26,7 +26,8 @@ function savedVehicle(): VehicleExpansion | null {
 
 export default function App() {
   const [selectedFitment, setSelectedFitment] = useState<PartSelection | null>(null);
-  const [expandedVehicle, setExpandedVehicle] = useState<VehicleExpansion | null>(savedVehicle);
+  const [activeVehicle, setActiveVehicle] = useState<VehicleExpansion | null>(savedVehicle);
+  const [vehicleNotice, setVehicleNotice] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(1);
@@ -35,14 +36,10 @@ export default function App() {
   const resultsSection = useRef<HTMLElement>(null);
   const restored = useRef(false);
   useEffect(() => {
-    if (!restored.current && expandedVehicle) tree.current?.expandToVehicle({ type: 'vehicle', label: '', ...expandedVehicle });
+    if (!restored.current && activeVehicle) tree.current?.expandToVehicle({ type: 'vehicle', label: '', ...activeVehicle });
     restored.current = true;
-  }, [expandedVehicle]);
-  const vehicleContext = useMemo<VehicleContext | null>(() => selectedFitment ? {
-    year: selectedFitment.year, makeId: selectedFitment.make.id, makeName: selectedFitment.make.name,
-    modelId: selectedFitment.model.id, modelName: selectedFitment.model.name,
-    engineId: selectedFitment.engine.id, engineName: selectedFitment.engine.name,
-  } : expandedVehicle, [selectedFitment, expandedVehicle]);
+  }, [activeVehicle]);
+  const vehicleContext: VehicleContext | null = activeVehicle;
   const scopedCategory = searchQuery ? undefined : selectedFitment?.category;
   useEffect(() => {
     if (scopedCategory || searchQuery.length >= 2) resultsSection.current?.scrollIntoView({ block: 'start' });
@@ -54,9 +51,25 @@ export default function App() {
   const { data: cart, refetch: refreshCart } = useQuery(() => cartApi.get('catalog-test'));
 
   function resetResults() { setFilters({}); setPage(1); }
+  function forgetSavedVehicle() {
+    // Use the existing storage helper; null is a valid cleared-state tombstone.
+    if (saveStorage(VEHICLE_KEY, 'null')) return true;
+    try { localStorage.removeItem(VEHICLE_KEY); return true; } catch { return false; }
+  }
+  function clearVehicle(focusPicker = true) {
+    resetResults(); setActiveVehicle(null); setSelectedFitment(null); setSearchQuery('');
+    setVehicleNotice(forgetSavedVehicle() ? '' : 'Vehicle cleared for this visit. The saved choice could not be cleared; it may return after reload. Retry before reloading.');
+    if (focusPicker) tree.current?.focusVehiclePicker();
+  }
   function rememberVehicle(vehicle: VehicleExpansion) {
-    setExpandedVehicle(vehicle);
-    if (!saveStorage(VEHICLE_KEY, JSON.stringify(vehicle))) toast.info('Your vehicle could not be saved in this browser.');
+    setActiveVehicle(vehicle);
+    if (!vehicleNotice && JSON.stringify(vehicle) === JSON.stringify(activeVehicle)) return;
+    setVehicleNotice('');
+    if (!saveStorage(VEHICLE_KEY, JSON.stringify(vehicle))) {
+      const forgotten = forgetSavedVehicle();
+      setVehicleNotice(forgotten ? 'Your vehicle could not be saved in this browser. Select it again after reload.'
+        : 'Your vehicle could not be saved in this browser. A previous vehicle may return after reload.');
+    }
   }
   function selectPartType(selection: PartSelection) {
     resetResults();
@@ -77,7 +90,7 @@ export default function App() {
       && result.modelId !== undefined && result.modelName !== undefined && result.engineId !== undefined && result.engineName !== undefined) {
       rememberVehicle({ year: result.year, makeId: result.makeId, makeName: result.makeName,
         modelId: result.modelId, modelName: result.modelName, engineId: result.engineId, engineName: result.engineName });
-    } else setExpandedVehicle(null);
+    } else clearVehicle(false);
     tree.current?.expandToVehicle(result);
   }
   async function changeCart(action: () => Promise<unknown>, message?: string) {
@@ -125,6 +138,7 @@ export default function App() {
     <div className="shrink-0 px-4 py-1 border-b text-xs text-muted-foreground flex flex-wrap items-center gap-3">
       <span>Catalog test · Canada / CAD · ERP staging · Checkout disabled</span>
       {vehicleContext && <div className="w-full min-w-0 flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="selected-context">
+        <span className="font-semibold text-foreground">Current vehicle</span>
         <Breadcrumb aria-label="Selected vehicle and category" className="min-w-0 flex-1 basis-full lg:basis-auto">
           <BreadcrumbList className="text-xs gap-1">
             {[{ label: String(vehicleContext.year), target: 'years' as const },
@@ -144,13 +158,19 @@ export default function App() {
           <Button size="sm" variant="outline" onClick={() => returnTo('categories')}>Categories</Button>
           <Button size="sm" variant="outline" onClick={() => returnTo('engines')}>Change engine</Button>
           <Button size="sm" variant="outline" onClick={() => returnTo('years')}>Change vehicle</Button>
+          <Button size="sm" variant="outline" onClick={() => clearVehicle()}>Clear vehicle</Button>
         </div>
+        <p className="w-full">{vehicleNotice ? 'Current choice applies for this visit.' : 'This choice is kept for your next visit.'} Change vehicle keeps it active until you choose another.</p>
       </div>}
+      {vehicleNotice && <p role="status" className="w-full text-foreground" data-testid="vehicle-storage-notice">
+        {vehicleNotice} <button className="underline" onClick={() => activeVehicle ? rememberVehicle(activeVehicle) : clearVehicle(false)}>Retry {activeVehicle ? 'saving vehicle' : 'clearing saved vehicle'}</button>
+      </p>}
+      {!vehicleContext && <span className="font-semibold text-foreground" role="status">All vehicles. Select a vehicle to narrow results.</span>}
     </div>
     <div className="flex-1 flex flex-row overflow-hidden">
       <main className="flex-1 min-w-0 overflow-auto p-4 pb-24 lg:pb-4">
         {searchQuery && <div className="mb-6">{renderParts()}<button className="text-sm underline my-3" onClick={() => textSearch('')}>Return to vehicle catalog</button></div>}
-        <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleSelect={selectVehicle} activeVehicle={expandedVehicle} selectedFitment={selectedFitment}
+        <TreeSidebar ref={tree} onPartTypeSelect={selectPartType} onVehicleSelect={selectVehicle} activeVehicle={activeVehicle} selectedFitment={selectedFitment}
           renderPartsInline={() => !searchQuery && selectedFitment ? renderParts() : null} />
       </main>
       <aside className="hidden lg:block" aria-label="Quick Cart"><RightCartPanel {...cartProps} /></aside>

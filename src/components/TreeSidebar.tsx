@@ -22,6 +22,7 @@ export interface PartSelection {
 }
 
 export interface TreeSidebarHandle {
+  focusVehiclePicker: () => void;
   expandToVehicle: (result: VehicleSearchResult) => void;
   expandToCategory: (result: VehicleSearchResult) => void;
   revealSelection: (target: 'categories' | 'engines' | 'years', vehicle: VehicleContext, category?: Category) => void;
@@ -63,7 +64,7 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
     if (!focusTarget || !root.current) return;
     const focus = () => {
       const target = document.getElementById(focusTarget);
-      const control = target?.matches('button') ? target : target?.querySelector('button');
+      const control = target?.matches('button, [tabindex]') ? target : target?.querySelector('button');
       if (!control || !root.current?.contains(control) || control.closest('[hidden]')) return false;
       control.focus(); control.scrollIntoView({ block: 'center' }); setFocusTarget(null); return true;
     };
@@ -78,6 +79,7 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
 
   // Expose expandToVehicle and expandToCategory functions via ref
   useImperativeHandle(ref, () => ({
+    focusVehiclePicker: () => setFocusTarget('vehicle-picker'),
     revealSelection: (target, vehicle, category) => {
       const { year, makeId, modelId, engineId } = vehicle;
       if (target !== 'years') {
@@ -205,9 +207,10 @@ export const TreeSidebar = forwardRef<TreeSidebarHandle, TreeSidebarProps>(
 
   return (
     <div ref={root} className="w-full min-w-0" data-testid="vehicle-tree">
-      <div className="py-2 text-xs uppercase tracking-[0.3em] font-display text-foreground font-semibold">
-        Part Catalog
-      </div>
+      <h2 id="vehicle-picker" tabIndex={-1} className="py-2 text-xs uppercase tracking-[0.3em] font-display text-foreground font-semibold">
+        Part Catalog · Choose a vehicle
+      </h2>
+      <p className="mb-2 text-xs text-muted-foreground">Open branches to browse. Select an engine or part category to set the current vehicle.</p>
 
       {yearsLoading && <p role="status" className="p-2 text-sm">Loading vehicle catalog…</p>}
       {(yearsError || categoriesError) && <div role="alert" className="p-3 text-sm text-red-700">{(yearsError || categoriesError)?.message}<button onClick={() => {
@@ -565,7 +568,7 @@ function EngineNode({
         {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
       </button>
       <button id={`vehicle-engine-${engineKey}`} onClick={onSelect} title={`Choose ${engine.name}`} aria-current={isCurrent ? 'true' : undefined}
-        className={cn("min-w-0 text-left px-2 py-1 rounded-r break-words hover:bg-muted", isCurrent && "bg-accent font-semibold")}>{engine.name}</button>
+        className={cn("min-w-0 text-left px-2 py-1 rounded-r break-words hover:bg-muted", isCurrent && "bg-accent font-semibold")}>{engine.name}{isCurrent && <span aria-hidden="true" className="ml-2 text-xs text-brand-accent">Current vehicle</span>}</button>
 
       <div id={`vehicle-categories-${engineKey}`} className="col-span-2 min-w-0" hidden={!isExpanded}>
       {isExpanded && (
