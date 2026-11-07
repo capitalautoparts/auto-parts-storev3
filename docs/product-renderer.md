@@ -65,3 +65,45 @@ contains no Offer or price. Existing fixed upstream/time/body limits are unchang
 
 No nginx, environment, settings, secret, indexing or installed infrastructure
 change is required for existing `/products/` routing. No deploy is performed here.
+
+## Source verification and remaining activation
+
+Recorded 2026-11-06 19:42 EST. Source checks ran on VM511, Node 22:
+
+- Focused product/document/on-prem fixtures: 27/27 passed.
+- Final runtime build after merging staging PR29 (`b5e67c9`): typecheck, static
+  build, bundled renderer and isolated release smoke passed (snapshot
+  `bf0907fc38e5`; renderer 688.84 kB). No source/node_modules runtime dependency.
+- Firefox real staging product `DVNJ_ALD1212M`: no-JS useful content; 1440/390
+  matching identity, no initial product API fetch, primary image loaded, no
+  horizontal overflow, optional existing detail/fitment access and Escape/focus;
+  disposable direct Add exactly +1 and wishlist; separate malformed/missing/
+  mismatched bootstrap and blocked-script preservation cases passed.
+- Attempt 1 also recorded a real uncaught dynamic catalog-entry import error;
+  its exact cancellation cause was unproven. Restoring the baseline static
+  catalog import removed that unnecessary failure surface. Attempt 2 then found
+  a checker-only exact-root expectation inconsistent with RP1's accepted
+  `/?scope=all`. Final entry/navigation continuation passed after checking that
+  explicit scope and mounted catalog; fast navigation/close had no page errors,
+  with expected cancelled asset requests recorded by phase. Passed groups were
+  not repeated for the checker-only correction.
+
+Attempt evidence (including failures) is under
+`/srv/dev/reports/roys-rp6-renderer-aa064791/attempt-{1,2,3}/`. Parent reviewed
+the 1440/390 source images and accepted the foundational layout. The supplied
+description mixes AGNA/Autologix text and repeated paragraphs. Those are source
+quality/curation limitations; no business data was rewritten and this product is
+not declared eligible for public indexing. RP7 owns full PDP refinement.
+
+After infra deploys the reviewed revision, run one **fresh full** hosted check
+on VM511 (queue first):
+
+```sh
+dev-remote --service env ROYS_ONPREM=1 ROYS_CATALOG_PREVIEW_ENABLED=true ROYS_RENDERER_BASE_URL=https://roys-staging.autrex.ca node scripts/product-renderer-smoke.mjs
+```
+
+Hosted mode starts no Vite server and permits only the known staging origins
+or HTTP localhost, with no URL credentials/path/query/fragment. It rejects scope,
+resume and continuation flags and creates fresh evidence. Source continuation
+reports are not hosted acceptance. The hosted run and served revision remain an
+infra activation gate; this branch performs no deploy or indexing change.

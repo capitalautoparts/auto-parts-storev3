@@ -1,5 +1,12 @@
 # Permanent product links (WP-ROYS-LINKS1, aa064791)
 
+RP6 source update: direct server product documents now hydrate a shared public
+view without an initial product re-fetch, and offer the existing richer detail
+modal on explicit request. In-catalog quick view is unchanged. The original #14
+implementation and hosted evidence below are historical; packaging, new source
+checks and the outstanding hosted activation gate are in
+[the renderer foundation record](product-renderer.md).
+
 The existing catalog remains a single React page. Product images, part names and
 Details are real anchors to `/products/<encoded ERP SKU>`. An ordinary click
 pushes a history entry and opens the existing dialog; Back, Forward and closing

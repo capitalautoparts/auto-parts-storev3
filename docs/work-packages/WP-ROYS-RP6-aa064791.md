@@ -14,4 +14,12 @@ Planned evidence: fixture status/identity/escaping checks; artifact-only Node 22
 smoke using the deployment's dist/server/package.json set; integrated direct
 product documents at 1440/390 on VM511 after parent clearance. No deployment.
 
-Status: claimed; implementation and validation pending.
+Status 2026-11-06 19:42 EST: implemented; focused fixtures 27/27, final runtime
+typecheck/build/artifact-only Node 22 smoke, real 1440/390/no-JS product groups
+and bounded final entry/navigation continuation passed on VM511. Parent accepted
+the source layout. Original failed attempts are retained and classified in
+`docs/product-renderer.md`; source description curation remains a limit.
+
+Normal merged staging through PR29 (`b5e67c9`); both search-intent and document
+runner entries retained. Final required pre-push, PR/CI/review and handoff follow.
+No merge/deploy or hosted acceptance is claimed.

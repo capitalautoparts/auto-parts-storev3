@@ -1,7 +1,8 @@
 // VM511 only, after npm run build. Real direct-product rendering is checked
-// separately from deliberate document/asset faults. No cart/list writes.
+// separately from deliberate document/asset faults. List writes use one
+// disposable browser context and the existing local test-list APIs only.
 import assert from 'node:assert/strict';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { firefox } from '@playwright/test';
@@ -10,11 +11,30 @@ import { createProductSmokeMonitor } from './product-links-monitor.mjs';
 assert.equal(process.env.ROYS_ONPREM, '1', 'Use the fixed on-prem staging target');
 assert.equal(process.env.ROYS_CATALOG_PREVIEW_ENABLED, 'true', 'Explicit staging preview flag required');
 assert.notEqual(process.env.VERCEL, '1', 'On-prem checks cannot run as Vercel');
-const output = process.env.ROYS_RENDERER_OUTPUT || `/tmp/roys-product-renderer-${Date.now()}`;
+assert.equal(process.argv.length, 2, 'Resume/positional flags are unsupported');
+const suppliedBase = process.env.ROYS_RENDERER_BASE_URL;
+let hostedBase;
+if (suppliedBase) {
+  assert.equal(process.env.ROYS_RENDERER_SCOPE, undefined, 'Hosted acceptance requires a fresh full run');
+  assert.equal(process.env.ROYS_RENDERER_RESUME, undefined, 'Hosted acceptance rejects resume flags');
+  assert.equal(process.env.ROYS_RENDERER_CONTINUE, undefined, 'Hosted acceptance rejects continuation flags');
+  const url = new URL(suppliedBase);
+  const staging = ['http://192.168.88.250', 'https://roys-staging.autrex.ca'].includes(url.origin);
+  const local = url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname);
+  assert.ok(staging || local, 'Only known staging origins or HTTP localhost are allowed');
+  assert.ok(!url.username && !url.password && url.pathname === '/' && !url.search && !url.hash, 'Base URL must be an origin only');
+  hostedBase = url.origin;
+}
+const output = process.env.ROYS_RENDERER_OUTPUT || await mkdtemp(`/tmp/roys-product-renderer-${hostedBase ? 'hosted' : 'source'}-`);
+if (process.env.ROYS_RENDERER_OUTPUT) await mkdir(output); // Refuse overwriting evidence.
 const sku = process.env.ROYS_RENDERER_SKU || 'DVNJ_ALD1212M';
 const path = `/products/${encodeURIComponent(sku)}`;
-const entryOnly = process.env.ROYS_RENDERER_SCOPE === 'entry-navigation';
-const report = { sku, scope: entryOnly ? 'entry-navigation' : 'full', apiResponses: [], pageErrors: [], phaseErrors: [], requestFailures: [], cases: [], screenshots: [] };
+const scope = process.env.ROYS_RENDERER_SCOPE || 'full';
+assert.ok(['full', 'entry-navigation', 'navigation-mobile'].includes(scope));
+const entryOnly = scope !== 'full';
+const report = { sku, scope, runtime: { mode: hostedBase ? 'hosted-base-url' : 'vite-built-fixed-lan' },
+  recordedEastern: new Date().toLocaleString('en-CA', { timeZone: 'America/Toronto', timeZoneName: 'short' }),
+  apiResponses: [], pageErrors: [], phaseErrors: [], requestFailures: [], cases: [], screenshots: [] };
 const monitor = createProductSmokeMonitor(report);
 let phase = 'setup';
 const observe = page => {
@@ -22,14 +42,17 @@ const observe = page => {
   page.on('pageerror', error => report.phaseErrors.push({ phase, message: error.message }));
   page.on('requestfailed', request => report.requestFailures.push({ phase, path: new URL(request.url()).pathname, error: request.failure()?.errorText }));
 };
-await mkdir(output, { recursive: true });
+let server, origin = hostedBase;
+if (!origin) {
 const reservation = createServer().listen(0, '127.0.0.1');
 await once(reservation, 'listening');
 const port = reservation.address().port;
 await new Promise(resolve => reservation.close(resolve));
 const { preview } = await import('vite');
-const server = await preview({ preview: { host: '127.0.0.1', port, strictPort: true } });
-const origin = `http://127.0.0.1:${port}`;
+server = await preview({ preview: { host: '127.0.0.1', port, strictPort: true } });
+origin = `http://127.0.0.1:${port}`;
+}
+report.runtime.origin = origin;
 let browser, activePage;
 try {
   browser = await firefox.launch({ headless: true });
@@ -61,6 +84,7 @@ try {
     const details = page.getByRole('button', { name: 'Additional product details', exact: true });
     await monitor.run(() => details.waitFor());
     serverHeading ??= await page.locator('#product-document h1').innerText();
+    if (!(scope === 'navigation-mobile' && width === 1440)) {
     assert.equal(await page.locator('#product-document h1').innerText(), serverHeading);
     assert.equal(requests.filter(resource => resource === 'product').length, 0, 'Hydration must not refetch the verified product');
     assert.equal(await page.locator('#product-schema').count(), 1);
@@ -73,6 +97,7 @@ try {
     }
     const screenshot = `${output}/product-${width}.png`;
     await page.screenshot({ path: screenshot, fullPage: true }); report.screenshots.push(screenshot);
+    }
     if (!entryOnly) {
     phase = `details-${width}`;
     await monitor.run(() => details.click());
@@ -88,20 +113,21 @@ try {
     assert.equal(await page.locator('#product-document h1').innerText(), serverHeading);
     }
     assert.deepEqual(errors, [], 'No hydration/React errors');
-    report.cases.push(`${width}: verified client identity, no initial refetch, fits viewport${entryOnly ? '' : ', optional detail modal and Escape/focus restoration'}`);
+    if (!(scope === 'navigation-mobile' && width === 1440)) report.cases.push(`${width}: verified client identity, no initial refetch, fits viewport${entryOnly ? '' : ', optional detail modal and Escape/focus restoration'}`);
     if (width === 1440) {
       phase = 'native-modified-browse';
       const popupPromise = context.waitForEvent('page');
       await page.getByRole('link', { name: 'Browse the catalog', exact: true }).click({ modifiers: ['Control'] });
       const popup = await popupPromise; observe(popup);
-      await monitor.run(() => popup.locator('#root header').waitFor()); assert.equal(new URL(popup.url()).pathname, '/'); await popup.close();
+      await popup.waitForURL(url => url.origin === origin && url.pathname === '/' && url.searchParams.get('scope') === 'all');
+      await monitor.run(() => popup.locator('#root header').waitFor()); await popup.close();
       phase = 'native-browse-back-forward';
       await monitor.run(() => page.getByRole('link', { name: 'Browse the catalog', exact: true }).click());
-      await page.waitForURL(origin + '/');
+      await page.waitForURL(url => url.origin === origin && url.pathname === '/' && url.searchParams.get('scope') === 'all');
       await monitor.run(() => page.locator('#root header').waitFor());
       await monitor.run(() => page.goBack()); await monitor.run(() => page.locator('#product-document h1').waitFor());
       assert.equal(await page.locator('#product-document h1').innerText(), serverHeading);
-      await monitor.run(() => page.goForward()); await page.waitForURL(origin + '/');
+      await monitor.run(() => page.goForward()); await page.waitForURL(url => url.origin === origin && url.pathname === '/' && url.searchParams.get('scope') === 'all');
       await monitor.run(() => page.locator('#root header').waitFor());
       report.cases.push('Native modified Browse link and document Back/Forward preserve the actual destination');
       phase = 'fast-navigation-close';
@@ -176,5 +202,5 @@ try {
   await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report, null, 2));
   await browser?.close();
-  await new Promise(resolve => server.httpServer.close(resolve));
+  if (server) await new Promise(resolve => server.httpServer.close(resolve));
 }
