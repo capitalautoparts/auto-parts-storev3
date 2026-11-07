@@ -19,6 +19,9 @@ export interface VehicleEngine {
   id: number;
   name: string;
   modelId: number;
+  /** Validated exact-YMM reference fields; null means supplied details malformed.
+   * Missing fields remain unknown, never inferred from vehicle or products. */
+  details?: { liter?: number; cylinders?: number; block_type?: string; cc?: number; cid?: number } | null;
 }
 
 export interface Category {

@@ -8,6 +8,25 @@ const params = (values: Record<string, string | number | undefined>) => new URLS
 );
 const referenceCache = new Map<string, { expires: number; data: unknown }>();
 const inFlight = new Map<string, Promise<unknown>>();
+function engineDetails(raw: unknown): VehicleEngine['details'] {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const details: NonNullable<VehicleEngine['details']> = {};
+  for (const key of ['liter', 'cylinders', 'cc', 'cid'] as const) {
+    const field = value[key];
+    if (field === undefined || field === null) continue;
+    if (!(typeof field === 'number' || (typeof field === 'string' && /^\d+(?:\.\d+)?$/.test(field.trim())))) return null;
+    const number = Number(field);
+    if (!Number.isFinite(number) || number <= 0 || (key !== 'liter' && !Number.isSafeInteger(number))) return null;
+    details[key] = number;
+  }
+  if (value.block_type !== undefined && value.block_type !== null) {
+    if (typeof value.block_type !== 'string' || !/^[A-Za-z][A-Za-z -]{0,19}$/.test(value.block_type.trim())) return null;
+    details.block_type = value.block_type.trim().toUpperCase();
+  }
+  return Object.keys(details).length ? details : undefined;
+}
 async function reference<T>(resource: string, values: Record<string, string | number | undefined> = {}): Promise<T> {
   const query = params(values), key = `${resource}?${query}`;
   const cached = referenceCache.get(key);
@@ -39,8 +58,11 @@ export const vehicleApi = {
     const make = (await vehicleApi.getMakes(year)).find(item => item.id === makeId);
     const model = (await vehicleApi.getModels(makeId, year)).find(item => item.id === modelId);
     if (!make || !model) throw new Error('Select a complete vehicle first.');
-    const data = await reference<{ engines: { id: number; description: string }[] }>('engines', { year, make: make.name, model: model.name });
-    return data.engines.length ? data.engines.map(engine => ({ id: engine.id, name: engine.description, modelId }))
+    const data = await reference<{ engines: { id: number; description: string; details?: unknown }[] }>('engines', { year, make: make.name, model: model.name });
+    return data.engines.length ? data.engines.map(engine => {
+      const details = engineDetails(engine.details);
+      return { id: engine.id, name: engine.description, modelId, ...(details === undefined ? {} : { details }) };
+    })
       : [{ id: 0, name: 'Engine unspecified — check application notes', modelId }];
   },
   async search(query: string): Promise<VehicleSearchResult[]> {
