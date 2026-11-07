@@ -1,17 +1,27 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readCatalog } from './catalog-proxy.ts';
 import { mapProduct, productMeta, productSchema, productSku } from './product-data.ts';
+import { publicProduct, serializeProductDocument, PRODUCT_BOOTSTRAP_ID, type ProductDocument } from './product-document.ts';
+
+export type ProductRenderer = (document: ProductDocument) => string | Promise<string>;
+const renderPackaged: ProductRenderer = async document => {
+  // Resolve from the deployed server directory, never from cwd or src/. Vite
+  // dev supplies its own explicit source loader; packaged runtime fails closed.
+  const artifact = new URL('../dist/server/product-renderer.js', import.meta.url).href;
+  const { renderProductDocument } = await import(artifact);
+  return renderProductDocument(document);
+};
 
 export const escapeHtml = (value: string): string => value.replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[char]!);
 
 // The existing HTML shell supplies the hashed Vite entry and styles. Product
-// identity is in the response body even with JavaScript disabled. React removes
-// the document fallback only after taking over the same-page detail dialog.
+// content and bootstrap are rendered from one verified public model. The client
+// hydrates that exact subtree; the catalog App remains a separate browser root.
 export function createProductPageHandler(
   template: () => Promise<string>, fetcher: typeof fetch = fetch,
-  env: NodeJS.ProcessEnv = process.env, localDevelopment = false,
+  env: NodeJS.ProcessEnv = process.env, localDevelopment = false, render: ProductRenderer = renderPackaged,
 ) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -23,10 +33,16 @@ export function createProductPageHandler(
       return res.end('Method not allowed.');
     }
     const input = req.url ?? '';
-    const url = new URL(input, 'http://catalog.local');
+    if (!input.startsWith('/products/')) { res.statusCode = 400; return res.end('Invalid product link.'); }
+    let url: URL;
+    try { url = new URL(input, 'http://catalog.local'); }
+    catch { res.statusCode = 400; return res.end('Invalid product link.'); }
     const sku = input.startsWith('/products/') && input.split('?', 1)[0] === url.pathname ? productSku(url.pathname) : null;
     let status = 400, title = 'Invalid product link', description = 'This product link is invalid.';
-    let head = '', article = '';
+    let head = '';
+    const documentPath = input.split('?', 1)[0];
+    let document: ProductDocument = { version: 1, path: documentPath, status: 400, title, message: description };
+    let bootstrap = '';
     if (sku) {
       const result = await readCatalog(`/api/catalog?${new URLSearchParams({ resource: 'product', sku })}`, fetcher, env, localDevelopment);
       status = result.status;
@@ -38,8 +54,9 @@ export function createProductPageHandler(
           // No upstream SEO HTML or schema is trusted; no offers/price metadata
           // is emitted until an integrated price contract has been accepted.
           head += `<script type="application/ld+json" id="product-schema">${productSchema(part)}</script>`;
-          article = `<h1>${escapeHtml(part.description)}</h1><p>${escapeHtml(part.brand)} ${escapeHtml(part.partNumber)}</p><p>ERP SKU: ${escapeHtml(sku)}</p><p>${escapeHtml(part.descriptionText || description)}</p>`;
-        } catch { status = 502; }
+          document = { version: 1, path: documentPath, status: 200, product: publicProduct(part) };
+          bootstrap = serializeProductDocument(document);
+        } catch { status = 502; head = ''; }
       }
       if (status !== 200) {
         title = status === 404 ? 'Product not found' : 'Product temporarily unavailable';
@@ -49,17 +66,22 @@ export function createProductPageHandler(
           res.setHeader('X-Roys-Catalog-Reference', body.reference);
         }
         description = status === 404 ? 'No product was found for this ERP SKU.' : 'The staging product could not be loaded. Please try again later.';
-        if (typeof body?.reference === 'string') description += ` Reference: ${body.reference}`;
+        if (typeof body?.reference === 'string' && /^[A-Za-z0-9._:-]{1,160}$/.test(body.reference)) description += ` Reference: ${body.reference}`;
       }
     }
-    if (status !== 200) article = `<h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p>`;
+    if (status !== 200) {
+      document = { version: 1, path: documentPath, status: status as 400 | 404 | 429 | 502 | 503, title, message: description };
+      bootstrap = serializeProductDocument(document);
+    }
     try {
       const html = await template();
+      if (!html.includes('<div id="root"></div>') || !html.includes('</head>')) throw new Error('Invalid product template.');
+      const article = await render(document);
       res.statusCode = status;
       return res.end(html.replace(/<title>[^]*?<\/title>/i, () => `<title>${escapeHtml(title)}</title>`)
         .replace(/<meta\s+name="description"[^>]*>/i, () => `<meta name="description" content="${escapeHtml(description)}" />`)
         .replace('</head>', () => `${head}</head>`)
-        .replace('<div id="root">', () => `<article id="product-document">${article}<p>Canada / CAD · ERP staging · Checkout disabled.</p><a href="/">Browse the catalog</a></article><div id="root">`));
+        .replace('<div id="root"></div>', () => `<div id="root">${article}</div><script id="${PRODUCT_BOOTSTRAP_ID}" type="application/json">${bootstrap}</script>`));
     } catch { res.statusCode = 503; res.end('Product temporarily unavailable.'); }
   };
 }

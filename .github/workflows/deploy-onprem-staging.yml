@@ -72,8 +72,8 @@ jobs:
           echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
           echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
           mkdir -p "$RELEASE_DIR"
-          # Runtime needs only the static build and the dependency-free server
-          # (Node 22 strips the TypeScript types; node: built-ins only).
+          # Runtime needs static assets, the bundled public React renderer in
+          # dist/server/, and Node-only server adapters. No src/ or node_modules/.
           rsync -a --delete dist/ "$RELEASE_DIR/dist/"
           rsync -a --delete server/ "$RELEASE_DIR/server/"
           cp package.json "$RELEASE_DIR/package.json"
