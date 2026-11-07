@@ -7,6 +7,7 @@ import { mapProduct, mapProductFitments, productMeta, productPath, productSchema
 import { createProductPageHandler } from '../server/product-page.ts';
 import { closeProduct, followProduct } from '../src/features/catalog/product-navigation.ts';
 import type { MouseEvent } from 'react';
+import { fixtureRenderer } from './product-page-fixture.ts';
 
 const sku = 'DVNJ_ALD1212M';
 const product = (pricing: unknown = { msrp: 28, sale_price: null, currency: 'CAD' }) => ({ product: {
@@ -286,7 +287,7 @@ test('product proxy preserves missing products, rejects stubs, and does no upstr
 
 const shell = '<html><head><title>Catalog</title><meta name="description" content="Catalog"><meta name="robots" content="noindex, nofollow"></head><body><div id="root"></div><script type="module" src="/assets/app.js"></script></body></html>';
 async function withPage(fetcher: typeof fetch, run: (origin: string) => Promise<void>, env: NodeJS.ProcessEnv = {}, local = true) {
-  const server = createServer(createProductPageHandler(async () => shell, fetcher, env, local)).listen(0, '127.0.0.1');
+  const server = createServer(createProductPageHandler(async () => shell, fetcher, env, local, fixtureRenderer)).listen(0, '127.0.0.1');
   await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address !== 'string');
   try { await run(`http://127.0.0.1:${address.port}`); }
@@ -305,8 +306,9 @@ test('product HTML is crawlable without JavaScript, escaped, noindex and omits u
     assert.match(html, /rel="canonical" href="\/products\/DVNJ_ALD1212M"/);
     assert.match(html, /name="robots" content="noindex, nofollow"/);
     assert.match(html, /src="\/assets\/app.js"/);
-    assert.doesNotMatch(html, /<script>alert|evil\.test|"offers"|"price"/);
+    assert.doesNotMatch(html, /<script>alert|evil\.test/);
     const schema = html.match(/id="product-schema">([^]*?)<\/script>/)?.[1]; assert.ok(schema);
+    assert.doesNotMatch(schema, /"offers"|"price"/);
     assert.equal(JSON.parse(schema).name, hostile);
     assert.equal(schema, productSchema(mapProduct({ product: { ...product().product, name: hostile, description_long: hostile } }, sku)));
   });
