@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { Header } from '@/components/Header';
 import { ProductRoute } from '@/components/ProductRoute';
 import { PartsTable } from '@/components/PartsTable';
@@ -17,14 +17,32 @@ import { DIMENSIONS } from '@/features/catalog/model';
 import { emptyListing } from '@/features/catalog/navigation-controller';
 import { listingQuery, serializeNavigation } from '@/features/catalog/navigation-state';
 import { useCatalogNavigation } from '@/features/catalog/use-catalog-navigation';
-import { restoreCatalogPresentation } from '@/features/catalog/navigation-presentation';
+import { restoreCatalogPresentation, revealCatalogListing } from '@/features/catalog/navigation-presentation';
 
 export default function App() {
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const tree = useRef<TreeSidebarHandle>(null);
   const main = useRef<HTMLElement>(null);
-  const resultsSection = useRef<HTMLElement>(null);
+  const resultsSection = useRef<HTMLElement | null>(null);
+  const resultsHeight = useRef(0);
+  const resultsObserver = useRef<ResizeObserver | null>(null);
+  const revealedRevision = useRef(-1);
+  const restoredRevision = useRef(-1);
+  const [presentationPending, setPresentationPending] = useState(true);
+  // Preserve measured space, never old products, while a new request replaces
+  // the rows. Attach to the actual node because inline branches mount later.
+  const attachResults = useCallback((section: HTMLElement | null) => {
+    resultsObserver.current?.disconnect();
+    resultsSection.current = section;
+    if (!section) return;
+    const measure = () => {
+      if (section.getAttribute('aria-busy') !== 'true') resultsHeight.current = section.getBoundingClientRect().height;
+    };
+    measure();
+    resultsObserver.current = new ResizeObserver(measure);
+    resultsObserver.current.observe(section);
+  }, []);
   const { controller, snapshot, notice: vehicleNotice, restoring } = useCatalogNavigation(main, tree);
   const listing = snapshot.listing;
   const state = listing?.state ?? emptyListing();
@@ -50,9 +68,10 @@ export default function App() {
   const { data: cart, refetch: refreshCart } = useQuery(() => cartApi.get('catalog-test'));
 
   // Restore disclosure before waiting for asynchronously mounted tree/results.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (snapshot.status !== 'ready') return;
     restoring.current = true;
+    setPresentationPending(true);
     setDraft('');
     if (snapshot.presentation?.disclosure) tree.current?.restoreDisclosure(snapshot.presentation.disclosure);
     else if (activeVehicle) {
@@ -60,23 +79,37 @@ export default function App() {
       else tree.current?.expandToVehicle({ type: 'vehicle', label: '', ...activeVehicle }, false);
     }
   }, [snapshot.revision]);
-  useEffect(() => {
-    if (snapshot.status !== 'ready' || !main.current) return;
+  useLayoutEffect(() => {
+    if (snapshot.status !== 'ready' || !main.current || restoredRevision.current === snapshot.revision) return;
     const container = main.current;
     const presentation = snapshot.presentation;
     let frame = 0;
     let finished = false;
     const restore = () => {
-      if (finished || isLoading) return;
+      if (finished) return;
       const target = showResults ? resultsSection.current : document.getElementById('vehicle-picker');
-      if (!restoreCatalogPresentation(container, presentation, isLoading, target)) return;
+      if (presentation) {
+        if (!restoreCatalogPresentation(container, presentation, isLoading, target)) return;
+      } else {
+        // Reveal the category once while loading; settling or Retry must not
+        // steal focus or move the visitor a second time.
+        if (revealedRevision.current !== snapshot.revision) {
+          const selectionId = inlineResults && selectedFitment
+            ? `vehicle-category-${selectedFitment.year}-${selectedFitment.make.id}-${selectedFitment.model.id}-${selectedFitment.engine.id}-${selectedFitment.category.id}` : undefined;
+          if (!revealCatalogListing(container, target, selectionId)) return;
+          revealedRevision.current = snapshot.revision;
+        }
+        if (isLoading) return;
+      }
       finished = true; restoring.current = false;
+      restoredRevision.current = snapshot.revision;
+      setPresentationPending(false);
       controller.savePresentation();
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(restore); };
     const observer = new MutationObserver(schedule);
     observer.observe(container, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'aria-busy'] });
-    schedule();
+    restore();
     return () => { finished = true; cancelAnimationFrame(frame); observer.disconnect(); };
   }, [snapshot.revision, isLoading]);
 
@@ -126,7 +159,8 @@ export default function App() {
   };
   const changeFilter = (key: Exclude<keyof typeof query, 'year' | 'make' | 'model' | 'engine_base_id'>, value: string) => { void controller.transition({ type: 'change-query', key, value }); };
   const pageHref = (number: number) => serializeNavigation({ ...state, filters: { ...state.filters, page: number } });
-  const renderParts = () => <section ref={resultsSection} id="catalog-results" tabIndex={-1} className="border-t border-border pt-3 min-w-0" data-testid="inline-parts" aria-label="Catalog results" aria-busy={isLoading}>
+  const renderParts = () => <section ref={attachResults} id="catalog-results" tabIndex={-1} className="border-t border-border pt-3 min-w-0" data-testid="inline-parts" aria-label="Catalog results" aria-busy={isLoading}
+    style={isLoading && resultsHeight.current ? { minHeight: resultsHeight.current } : undefined}>
     <div className="mb-2">
       <h2 className="font-semibold text-sm text-foreground">{searchQuery ? `Search: ${searchQuery}` : scopedCategory?.name ?? 'Vehicle parts'}</h2>
       <p className="text-xs text-muted-foreground">Check engine, submodel, position and application notes before choosing a part.</p>
@@ -206,6 +240,7 @@ export default function App() {
     </div>
     <div className="flex-1 min-h-0 flex flex-row overflow-hidden">
       <main ref={main} id="catalog-main" tabIndex={-1} className="flex-1 min-w-0 overflow-auto p-3"
+        style={isLoading || presentationPending ? { overflowAnchor: 'none' } : undefined}
         onScroll={() => controller.savePresentation()} onFocusCapture={() => controller.savePresentation()}>
         {snapshot.status === 'resolving' && <p role="status">Resolving catalog URL…</p>}
         {snapshot.recovery && <div role="alert" data-testid="navigation-recovery" className="p-3 text-sm">

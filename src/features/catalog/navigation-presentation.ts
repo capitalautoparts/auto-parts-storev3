@@ -31,3 +31,16 @@ export function restoreCatalogPresentation(container: HTMLElement, presentation:
   } else return false;
   return true;
 }
+
+/** New listing navigation reveals its context while replacement rows load.
+ * A known inline selection must mount before falling back to any other target. */
+export function revealCatalogListing(container: HTMLElement, results: HTMLElement | null,
+  selectionId?: string): boolean {
+  if (container.querySelector('[data-tree-loading]')) return false;
+  const target = selectionId ? container.ownerDocument.getElementById(selectionId) : results;
+  if (!target || !container.contains(target) || target.closest('[hidden]')) return false;
+  target.focus({ preventScroll: true });
+  const y = container.scrollTop + target.getBoundingClientRect().top - container.getBoundingClientRect().top - container.clientTop;
+  container.scrollTo({ top: y, left: container.scrollLeft, behavior: 'instant' });
+  return true;
+}
