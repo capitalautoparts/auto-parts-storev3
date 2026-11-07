@@ -195,6 +195,10 @@ vehicle or storage write. Alias/compound parsing remains RP2/3.
 `followProduct` preserves modified/native clicks, captures presentation before
 pushing an overlay, and retains the original SKU URL. Overlay Close uses Back;
 a direct product's Return uses explicit `/?scope=all`, avoiding memory restore.
+Returning from a genuine overlay to its exact saved history entry retains the
+already accepted listing and mounted results, restoring presentation without an
+empty intermediate listing or another search. A different destination or direct
+product entry still resolves normally.
 No background query is added to product identity. The substantive standalone
 product page remains RP7.
 
