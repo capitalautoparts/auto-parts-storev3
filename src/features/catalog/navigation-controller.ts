@@ -60,12 +60,23 @@ export class CatalogNavigationController {
       return;
     }
     if (initial.source === 'url' && initial.state.kind === 'product') {
-      this.publish({ status: 'product', origin, listing: this.snapshot.listing });
+      const background = this.ports.historyState()?.roysProductOverlay === true
+        ? parseCatalogBackground(this.ports.historyState()?.roysProductBackground) ?? undefined : undefined;
+      this.publish({ status: 'product', origin, listing: this.snapshot.listing, presentation: background });
       return;
     }
     const state = initial.source === 'url' ? initial.state as ListingNavigationState
       : initial.source === 'remembered' ? { ...emptyListing(), scope: { kind: 'vehicle' as const, vehicle: initial.vehicle } } : emptyListing();
     this.intended = state;
+    // The overlay never replaced this accepted listing. Returning to its exact
+    // history entry must keep the mounted results/query key: clearing them first
+    // clamps the main scroll and refetches before presentation can be restored.
+    const retained = this.snapshot.status === 'product' ? this.snapshot.listing : undefined;
+    if (origin === 'pop' && retained && this.snapshot.presentation?.href === href
+      && presentation?.href === href && serializeNavigation(retained.state) === serializeNavigation(state)) {
+      this.publish({ status: 'ready', origin, listing: retained, presentation });
+      return;
+    }
     this.publish({ status: 'resolving', origin });
     const resolved = await this.ports.resolve(state);
     if (id !== this.sequence) return;

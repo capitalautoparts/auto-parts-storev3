@@ -348,3 +348,85 @@ test('clear filters composes pending vehicle and query edits without restoring t
   assert.equal(h.pushes.length, 1); assert.equal(h.writes.length, 1);
   assert.equal(h.memory()?.year, 2016, 'Pending deliberate vehicle is saved only by accepted final intent');
 });
+
+test('same overlay return retains the accepted listing through every published state without resolving again', async () => {
+  const href = `${vehicleUrl}&sub_model_id=2&drive_type_id=3&body_style_config_id=4&transmission_id=5&region_id=6&category=fixture-pads&category_parent=fixture-brakes&part_type=700&brand=A&in_stock_only=true&page=2`;
+  let currentHref = href, historyState: Record<string, unknown> = {};
+  let resolutions = 0;
+  let pendingReference: Promise<void> | undefined;
+  const controller = new CatalogNavigationController({
+    href: () => currentHref, historyState: () => historyState,
+    push: () => { throw new Error('Popstate must not push'); },
+    replace: value => { historyState = value; }, capture: () => null,
+    remembered: () => remembered, remember: () => { throw new Error('Popstate must not remember'); },
+    forget: () => { throw new Error('Popstate must not forget'); },
+    resolve: async state => { resolutions++; await pendingReference; return resolveListing(state, refs); },
+  });
+  await controller.load();
+  const accepted = controller.getSnapshot().listing;
+  assert.ok(accepted);
+  const background: CatalogBackground = { version: 1, href, scroll: { x: 0, y: 6642 },
+    focusKey: 'link:/products/ABCD_FIXTURE', focusControl: 'image',
+    disclosure: { years: [2015], makes: ['2015-1'], models: ['2015-1-2'], engines: ['2015-1-2-10'], categories: ['2015-1-2-10-400'] } };
+  const published: ReturnType<typeof controller.getSnapshot>[] = [];
+  controller.subscribe(() => published.push(controller.getSnapshot()));
+  for (let roundtrip = 0; roundtrip < 2; roundtrip++) {
+    currentHref = '/products/ABCD_FIXTURE'; historyState = { roysProductOverlay: true, roysProductBackground: background };
+    await controller.load('pop');
+    assert.equal(controller.getSnapshot().status, 'product');
+    currentHref = href; historyState = { roysCatalog: background };
+    await controller.load('pop');
+    assert.equal(controller.getSnapshot().status, 'ready');
+    assert.equal(controller.getSnapshot().listing, accepted, 'Retain the object used by the results request key');
+    assert.deepEqual(controller.getSnapshot().presentation, background);
+  }
+  assert.equal(resolutions, 1, 'Close/Forward/Back reuse the accepted overlay background');
+  assert.ok(published.every(snapshot => snapshot.listing === accepted), 'No intermediate empty listing can unmount results');
+
+  // A changed history destination must still resolve its own full URL.
+  currentHref = '/products/ABCD_FIXTURE'; historyState = { roysProductOverlay: true, roysProductBackground: background };
+  await controller.load('pop');
+  currentHref = href.replace('page=2', 'page=3');
+  historyState = { roysCatalog: { ...background, href: currentHref } };
+  await controller.load('pop');
+  assert.equal(resolutions, 2);
+  assert.equal(controller.getSnapshot().listing?.state.filters.page, 3);
+  assert.ok(published.some(snapshot => snapshot.status === 'resolving'));
+
+  // An ordinary/direct product entry lacks the overlay authorization to reuse.
+  currentHref = '/products/ABCD_FIXTURE'; historyState = {};
+  await controller.load('pop');
+  currentHref = href.replace('page=2', 'page=3');
+  historyState = { roysCatalog: { ...background, href: currentHref } };
+  await controller.load('pop');
+  assert.equal(resolutions, 3);
+  const destination = currentHref;
+  for (const [captured, restored] of [
+    [undefined, { ...background, href: destination }],
+    [{ ...background, version: 2 }, { ...background, href: destination }],
+    [{ ...background, href: destination }, background],
+  ]) {
+    const before: number = resolutions;
+    currentHref = '/products/ABCD_FIXTURE';
+    historyState = { roysProductOverlay: true, roysProductBackground: captured };
+    await controller.load('pop');
+    currentHref = destination; historyState = { roysCatalog: restored };
+    await controller.load('pop');
+    assert.equal(resolutions, before + 1, 'Missing/invalid capture or mismatched destination must resolve');
+  }
+
+  // A slow edit initiated before opening the overlay cannot win after Back.
+  let release!: () => void;
+  pendingReference = new Promise<void>(resolve => { release = resolve; });
+  const retained = controller.getSnapshot().listing;
+  const obsoleteEdit = controller.transition({ type: 'change-query', key: 'page', value: '4' });
+  currentHref = '/products/ABCD_FIXTURE';
+  const matchingBackground = { ...background, href: destination };
+  historyState = { roysProductOverlay: true, roysProductBackground: matchingBackground };
+  await controller.load('pop');
+  currentHref = destination; historyState = { roysCatalog: matchingBackground };
+  await controller.load('pop');
+  assert.equal(controller.getSnapshot().listing, retained);
+  release(); await obsoleteEdit;
+  assert.equal(controller.getSnapshot().listing, retained, 'Stale async resolution cannot replace restored listing or push');
+});
