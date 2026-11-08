@@ -14,7 +14,8 @@ export default defineConfig({
     name: 'roysauto-staging-catalog',
     configureServer(server) {
       server.middlewares.use('/api/catalog', catalogHandler)
-      const products = createProductPageHandler(async () => server.transformIndexHtml('/', await readFile('index.html', 'utf8')), fetch, process.env, true)
+      const products = createProductPageHandler(async () => server.transformIndexHtml('/', await readFile('index.html', 'utf8')), fetch, process.env, true,
+        async document => (await server.ssrLoadModule('/server/product-renderer.ts')).renderProductDocument(document))
       server.middlewares.use((req, res, next) => { if (req.url?.startsWith('/products/')) return void products(req, res); next() })
     },
     configurePreviewServer(server) {

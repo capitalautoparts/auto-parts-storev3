@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { createCatalogHandler } from '../server/catalog-proxy.ts';
 import { createOnPremServer, resolveListenOptions } from '../server/onprem-server.ts';
 import { createProductPageHandler } from '../server/product-page.ts';
+import { fixtureRenderer } from './product-page-fixture.ts';
 
 test('on-prem server serves /healthz, rejects other paths and methods, and proxies only /api/catalog', async () => {
   const calls: string[] = [];
@@ -43,7 +44,7 @@ test('on-prem product HTML uses the fixed LAN with normal gates and leaves arbit
   const shell = '<html><head><title>Catalog</title><meta name="description" content="Catalog"><meta name="robots" content="noindex, nofollow"></head><body><div id="root"></div></body></html>';
   for (const enabled of [false, true]) {
     const env = { ROYS_ONPREM: '1', ROYS_CATALOG_PREVIEW_ENABLED: enabled ? 'true' : 'false' };
-    const server = createOnPremServer(createCatalogHandler(fetcher, env), createProductPageHandler(async () => shell, fetcher, env)).listen(0, '127.0.0.1');
+    const server = createOnPremServer(createCatalogHandler(fetcher, env), createProductPageHandler(async () => shell, fetcher, env, false, fixtureRenderer)).listen(0, '127.0.0.1');
     await once(server, 'listening'); const address = server.address(); assert.ok(address && typeof address !== 'string');
     const origin = `http://127.0.0.1:${address.port}`;
     try {
